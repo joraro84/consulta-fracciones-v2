@@ -1,7 +1,5 @@
 """
-Base de datos para CONSULTA DE FRACCIONES v2.
-Usa Turso (libSQL) vía HTTP API directo con requests.
-BD persistente, sin dependencias compiladas.
+Base de datos para CONSULTA DE FRACCIONES v2 - Turso vía HTTP API
 """
 import requests
 import pandas as pd
@@ -15,14 +13,31 @@ def _get_creds():
 
 
 def _to_arg(value):
-    if value is None or (isinstance(value, float) and pd.isna(value)):
+    """Convierte valor Python a formato Turso hrana v2.
+    IMPORTANTE: float debe enviarse como número, no string."""
+    if value is None:
         return {"type": "null"}
+    # Detectar NaN/NaT
+    try:
+        if pd.isna(value):
+            return {"type": "null"}
+    except (TypeError, ValueError):
+        pass
     if isinstance(value, bool):
         return {"type": "integer", "value": str(int(value))}
     if isinstance(value, int):
         return {"type": "integer", "value": str(value)}
     if isinstance(value, float):
-        return {"type": "float", "value": str(value)}
+        return {"type": "float", "value": float(value)}  # ¡NÚMERO, no string!
+    # numpy types
+    try:
+        import numpy as np
+        if isinstance(value, np.integer):
+            return {"type": "integer", "value": str(int(value))}
+        if isinstance(value, np.floating):
+            return {"type": "float", "value": float(value)}
+    except ImportError:
+        pass
     return {"type": "text", "value": str(value)}
 
 
@@ -32,9 +47,9 @@ def _arg_to_py(arg):
         return None
     v = arg.get("value")
     if t == "integer":
-        return int(v)
+        return int(v) if v is not None else None
     if t == "float":
-        return float(v)
+        return float(v) if v is not None else None
     return v
 
 
@@ -47,7 +62,6 @@ def _session():
 
 
 def _post_pipeline(stmts):
-    """stmts: lista de (sql, args) o sql string. Ejecuta en una sola request HTTP."""
     s, base_url = _session()
     reqs = []
     for st_item in stmts:
@@ -57,13 +71,18 @@ def _post_pipeline(stmts):
         else:
             reqs.append({"type": "execute", "stmt": {"sql": st_item}})
     reqs.append({"type": "close"})
-    r = s.post(f"{base_url}/v2/pipeline", json={"requests": reqs}, timeout=60)
-    r.raise_for_status()
-    return r.json()
+    r = s.post(f"{base_url}/v2/pipeline", json={"requests": reqs}, timeout=120)
+    if not r.ok:
+        raise RuntimeError(f"Turso HTTP {r.status_code}: {r.text[:500]}")
+    data = r.json()
+    for res in data.get("results", []):
+        if res.get("type") == "error":
+            err = res.get("error", {})
+            raise RuntimeError(f"Turso SQL error: {err.get('message', str(err))[:300]}")
+    return data
 
 
 def _query(sql, args=None):
-    """Ejecuta SELECT y devuelve lista de tuplas."""
     args = args or []
     s, base_url = _session()
     r = s.post(
@@ -74,11 +93,12 @@ def _query(sql, args=None):
         ]},
         timeout=60
     )
-    r.raise_for_status()
+    if not r.ok:
+        raise RuntimeError(f"Turso HTTP {r.status_code}: {r.text[:500]}")
     data = r.json()
     res = data["results"][0]
-    if res.get("type") != "ok":
-        raise RuntimeError(f"Query error: {res}")
+    if res.get("type") == "error":
+        raise RuntimeError(f"Turso SQL: {res.get('error',{}).get('message', '')[:300]}")
     result = res["response"]["result"]
     rows = []
     for row in result.get("rows", []):
@@ -87,7 +107,6 @@ def _query(sql, args=None):
 
 
 def _execute(sql, args=None):
-    """Ejecuta INSERT/UPDATE/DELETE simple."""
     args = args or []
     s, base_url = _session()
     r = s.post(
@@ -98,18 +117,23 @@ def _execute(sql, args=None):
         ]},
         timeout=60
     )
-    r.raise_for_status()
+    if not r.ok:
+        raise RuntimeError(f"Turso HTTP {r.status_code}: {r.text[:500]}")
     data = r.json()
     res = data["results"][0]
-    if res.get("type") != "ok":
-        raise RuntimeError(f"Execute error: {res}")
+    if res.get("type") == "error":
+        raise RuntimeError(f"Turso SQL: {res.get('error',{}).get('message', '')[:300]}")
     return res["response"]["result"]
 
 
-# === Normalización ===
 def normalizar(texto):
-    if texto is None or (isinstance(texto, float) and pd.isna(texto)):
+    if texto is None:
         return ""
+    try:
+        if pd.isna(texto):
+            return ""
+    except (TypeError, ValueError):
+        pass
     s = str(texto).upper().strip()
     rep = {'Á':'A','É':'E','Í':'I','Ó':'O','Ú':'U','Ü':'U','Ñ':'N',
            'á':'A','é':'E','í':'I','ó':'O','ú':'U','ü':'U','ñ':'N'}
@@ -121,8 +145,13 @@ def normalizar(texto):
 
 
 def normalizar_fraccion(valor):
-    if valor is None or (isinstance(valor, float) and pd.isna(valor)):
+    if valor is None:
         return ""
+    try:
+        if pd.isna(valor):
+            return ""
+    except (TypeError, ValueError):
+        pass
     try:
         if isinstance(valor, (int, float)):
             return f"{int(valor):010d}"
@@ -136,27 +165,20 @@ def normalizar_fraccion(valor):
         return ""
 
 
-# === Esquema ===
 SCHEMA_VERSION = "v2"
 
 
 def init_db():
-    """Crea las tablas. Si BD tiene versión diferente, limpia y recrea."""
-    # 1) Crear metadata primero (si no existe)
     _post_pipeline([
         "CREATE TABLE IF NOT EXISTS metadata (clave TEXT PRIMARY KEY, valor TEXT)"
     ])
-    # 2) Verificar versión actual
     try:
         rows = _query("SELECT valor FROM metadata WHERE clave = ?", ["schema_version"])
         current = rows[0][0] if rows else None
     except Exception:
         current = None
-
     if current == SCHEMA_VERSION:
-        return  # ya está al día
-
-    # 3) Limpiar todo y crear esquema fresco
+        return
     _post_pipeline([
         "DROP TABLE IF EXISTS base",
         "DROP TABLE IF EXISTS aranceles",
@@ -178,7 +200,6 @@ def init_db():
     ])
 
 
-# === Búsqueda ===
 def buscar(criterio, limite=100):
     if not criterio or not criterio.strip():
         return []
@@ -213,7 +234,6 @@ def obtener_registro(id_reg):
     return rows[0] if rows else None
 
 
-# === CRUD individuales ===
 def agregar_registro(descripcion, desc_factura, fraccion, observaciones="", precio_manual=None):
     fn = normalizar_fraccion(fraccion)
     pm = None
@@ -226,7 +246,8 @@ def agregar_registro(descripcion, desc_factura, fraccion, observaciones="", prec
         "INSERT INTO base (descripcion, descripcion_factura, fraccion, precio_manual, observaciones, desc_norm) VALUES (?,?,?,?,?,?)",
         [descripcion, desc_factura, fn, pm, observaciones, normalizar(descripcion)]
     )
-    return int(res.get("last_insert_rowid", "0"))
+    rid = res.get("last_insert_rowid")
+    return int(rid) if rid else 0
 
 
 def actualizar_registro(id_reg, descripcion, desc_factura, fraccion, observaciones, precio_manual=None):
@@ -247,12 +268,10 @@ def eliminar_registro(id_reg):
     _execute("DELETE FROM base WHERE id=?", [id_reg])
 
 
-# === Bulk upload desde Excel (en batches HTTP) ===
-BATCH_SIZE = 250  # statements por request HTTP
+BATCH_SIZE = 100
 
 
 def _bulk_insert(sql_template, rows):
-    """Ejecuta muchos INSERTs en lotes de BATCH_SIZE statements por request HTTP."""
     if not rows:
         return 0
     total = 0
@@ -265,7 +284,6 @@ def _bulk_insert(sql_template, rows):
 
 
 def reemplazar_base(df):
-    """Reemplaza tabla BASE completa desde DataFrame."""
     _execute("DELETE FROM base", [])
     rows = []
     for _, row in df.iterrows():
@@ -278,7 +296,6 @@ def reemplazar_base(df):
             pm = None
             obs = ""
             if len(row) >= 7:
-                # Excel completo (A=desc,B=desc_fac,C=frac,D=arancel,E=umt,F=precio,G=obs)
                 if not pd.isna(row.iloc[5]):
                     try:
                         v = row.iloc[5]
@@ -287,7 +304,6 @@ def reemplazar_base(df):
                         pm = None
                 obs = str(row.iloc[6]) if not pd.isna(row.iloc[6]) else ""
             elif len(row) >= 4:
-                # Machote simple (A=desc,B=desc_fac,C=frac,D=obs)
                 obs = str(row.iloc[3]) if not pd.isna(row.iloc[3]) else ""
             rows.append([desc, desc_fac, fraccion, pm, obs, normalizar(desc)])
         except Exception:
@@ -299,7 +315,6 @@ def reemplazar_base(df):
 
 
 def reemplazar_aranceles(df):
-    """Reemplaza tabla ARANCELES desde DataFrame (3 columnas: FRACCION, ARANCEL, UMT)."""
     _execute("DELETE FROM aranceles", [])
     rows = []
     seen = set()
@@ -318,7 +333,6 @@ def reemplazar_aranceles(df):
 
 
 def reemplazar_estimado(df):
-    """Reemplaza tabla estimado desde DataFrame (4 columnas)."""
     _execute("DELETE FROM estimado", [])
     rows = []
     seen = set()
@@ -337,7 +351,6 @@ def reemplazar_estimado(df):
     return _bulk_insert("INSERT INTO estimado (fraccion, descripcion_nico, umt, precio) VALUES (?,?,?,?)", rows)
 
 
-# === Export ===
 def exportar_excel(ruta_salida):
     base_rows = _query("SELECT descripcion, descripcion_factura, fraccion, precio_manual, observaciones FROM base")
     df_base = pd.DataFrame(base_rows, columns=['DESCRIPCION', 'DESCRIPCION FACTURA', 'FRACCION', 'PRECIO ESTIMADO', 'OBSERVACIONES'])
