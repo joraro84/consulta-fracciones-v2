@@ -14,25 +14,52 @@ st.set_page_config(
     layout="wide"
 )
 
-# Ocultar TODOS los elementos de Streamlit Cloud (Fork, GitHub icon, footer, etc.)
+# CSS para ocultar todo lo de Streamlit Cloud + estilizar inputs + ocultar sidebar
 HIDE_STREAMLIT = """
 <style>
+/* Ocultar header completo de Streamlit Cloud */
 header[data-testid="stHeader"] {display: none !important; visibility: hidden !important; height: 0 !important;}
-footer {display: none !important; visibility: hidden !important;}
 [data-testid="stToolbar"] {display: none !important;}
-.stDeployButton, [data-testid="stDeployButton"] {display: none !important;}
-.viewerBadge_container__1QSob, [class*="viewerBadge"], div[class*="viewerBadge"] {display: none !important;}
-#MainMenu, .stApp [data-testid="stStatusWidget"] {display: none !important; visibility: hidden !important;}
-a[href*="streamlit.io"], a[href*="github.com"], a[href*="share.streamlit"] {display: none !important;}
+.stDeployButton, [data-testid="stDeployButton"], [data-testid="stAppDeployButton"] {display: none !important;}
+#MainMenu, .stApp [data-testid="stStatusWidget"] {display: none !important;}
+[data-testid="stMainMenu"], [data-testid="stHeaderActionElements"] {display: none !important;}
+.stApp > header, .stApp {margin-top: 0 !important;}
 .stApp h1 a, .stApp h2 a, .stApp h3 a {display: none !important;}
-[data-testid="stHeaderActionElements"], [data-testid="stMainMenu"] {display: none !important;}
-[data-testid="stAppDeployButton"], [data-testid="stAppToolbar"] {display: none !important;}
-[data-testid="stDecoration"] {display: none !important;}
-.stAppDeployButton, .stAppToolbar, .stMainMenu {display: none !important;}
-button[title*="View source"], button[title*="Report"], button[title*="About"] {display: none !important;}
-.stApp > header {display: none !important;}
-section[data-testid="stSidebar"] > div:first-child > div:first-child {padding-top: 1rem !important;}
-.stApp {margin-top: 0 !important;}
+
+/* Ocultar TODO lo del footer y badges (gato, Streamlit, hosted, etc.) */
+footer {display: none !important; visibility: hidden !important;}
+.viewerBadge_container__1QSob, [class*="viewerBadge"], div[class*="viewerBadge"], a[class*="viewerBadge"] {display: none !important;}
+.viewerBadge_link__qRIco, .viewerBadge_text__1JaDK {display: none !important;}
+[data-testid="stDecoration"], [data-testid="stStatusWidget"], [data-testid="stConnectionStatus"] {display: none !important;}
+.stStatusWidget, ._terminalButton, ._profileContainer {display: none !important;}
+[class*="_link_"], [class*="_container_"][class*="viewer"] {display: none !important;}
+a[href*="streamlit.io"], a[href*="github.com"], a[href*="share.streamlit"], a[href*="streamlit.app"] {display: none !important;}
+
+/* OCULTAR SIDEBAR completamente */
+section[data-testid="stSidebar"] {display: none !important; width: 0 !important;}
+[data-testid="collapsedControl"], button[kind="header"], [data-testid="stSidebarCollapsedControl"] {display: none !important;}
+.stApp > div:first-child > div:first-child {margin-left: 0 !important;}
+
+/* BORDE OSCURO en inputs - búsqueda y login */
+.stTextInput > div > div, .stPasswordInput > div > div, [data-baseweb="input"], [data-baseweb="base-input"] {
+    border: 1.5px solid #4B5563 !important;
+    border-radius: 6px !important;
+}
+.stTextInput input, .stPasswordInput input, [data-baseweb="input"] input {
+    background-color: #FFFFFF !important;
+    color: #1F2937 !important;
+}
+.stTextInput > div > div:focus-within, .stPasswordInput > div > div:focus-within, [data-baseweb="input"]:focus-within {
+    border: 2px solid #1F2937 !important;
+    box-shadow: 0 0 0 1px #1F2937 !important;
+}
+
+/* Botón "Salir" estilo más sutil */
+.btn-salir button {
+    background-color: #6B7280 !important;
+    color: white !important;
+    border: none !important;
+}
 </style>
 """
 st.markdown(HIDE_STREAMLIT, unsafe_allow_html=True)
@@ -48,6 +75,18 @@ try:
 except Exception as e:
     st.error(f"❌ Error conectando a Turso: {e}")
     st.stop()
+
+
+def header_con_salir(titulo):
+    col_t, col_s = st.columns([8, 1])
+    with col_t:
+        st.title(titulo)
+    with col_s:
+        st.write("")
+        if st.button("🚪 Salir", key=f"logout_{titulo[:10]}", use_container_width=True):
+            for k in list(st.session_state.keys()):
+                del st.session_state[k]
+            st.rerun()
 
 
 def login():
@@ -160,29 +199,19 @@ def mostrar_resultados(resultados):
 
 
 def modo_consulta():
-    st.title("🔎 CONSULTA DE FRACCIONES")
+    header_con_salir("🔎 CONSULTA DE FRACCIONES")
     n_base, n_ar, n_est = db.contar_registros()
     st.caption(f"📦 {n_base} productos · 📋 {n_ar} fracciones LIGIE · 💲 {n_est} precios estimados")
     criterio = st.text_input("Escribe una palabra (mayúsculas/acentos no importan)", key="busq_cons")
     if criterio:
         resultados = db.buscar(criterio)
         mostrar_resultados(resultados)
-    with st.sidebar:
-        if st.button("Cerrar sesión"):
-            del st.session_state["modo"]
-            st.rerun()
 
 
 def modo_admin():
-    st.title("🔎 CONSULTA DE FRACCIONES - Administrador")
+    header_con_salir("🔎 CONSULTA DE FRACCIONES - Administrador")
     n_base, n_ar, n_est = db.contar_registros()
-    st.caption(f"📦 {n_base} productos · 📋 {n_ar} fracciones LIGIE · 💲 {n_est} precios estimados")
-
-    with st.sidebar:
-        st.success("Modo: ADMINISTRADOR")
-        if st.button("Cerrar sesión"):
-            del st.session_state["modo"]
-            st.rerun()
+    st.caption(f"📦 {n_base} productos · 📋 {n_ar} fracciones LIGIE · 💲 {n_est} precios estimados · Modo: ADMINISTRADOR")
 
     tabs = st.tabs([
         "🔎 Consultar",
