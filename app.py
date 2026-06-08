@@ -14,6 +14,29 @@ st.set_page_config(
     layout="wide"
 )
 
+# Ocultar TODOS los elementos de Streamlit Cloud (Fork, GitHub icon, footer, etc.)
+HIDE_STREAMLIT = """
+<style>
+header[data-testid="stHeader"] {display: none !important; visibility: hidden !important; height: 0 !important;}
+footer {display: none !important; visibility: hidden !important;}
+[data-testid="stToolbar"] {display: none !important;}
+.stDeployButton, [data-testid="stDeployButton"] {display: none !important;}
+.viewerBadge_container__1QSob, [class*="viewerBadge"], div[class*="viewerBadge"] {display: none !important;}
+#MainMenu, .stApp [data-testid="stStatusWidget"] {display: none !important; visibility: hidden !important;}
+a[href*="streamlit.io"], a[href*="github.com"], a[href*="share.streamlit"] {display: none !important;}
+.stApp h1 a, .stApp h2 a, .stApp h3 a {display: none !important;}
+[data-testid="stHeaderActionElements"], [data-testid="stMainMenu"] {display: none !important;}
+[data-testid="stAppDeployButton"], [data-testid="stAppToolbar"] {display: none !important;}
+[data-testid="stDecoration"] {display: none !important;}
+.stAppDeployButton, .stAppToolbar, .stMainMenu {display: none !important;}
+button[title*="View source"], button[title*="Report"], button[title*="About"] {display: none !important;}
+.stApp > header {display: none !important;}
+section[data-testid="stSidebar"] > div:first-child > div:first-child {padding-top: 1rem !important;}
+.stApp {margin-top: 0 !important;}
+</style>
+"""
+st.markdown(HIDE_STREAMLIT, unsafe_allow_html=True)
+
 
 @st.cache_resource
 def _init():
