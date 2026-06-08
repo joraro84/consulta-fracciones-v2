@@ -130,21 +130,42 @@ def modo_admin():
                     sel_id = int(sel.split(" - ")[0])
                     seleccionado = db.obtener_registro(sel_id)
 
+        # FIX: pre-llenar campos en session_state cuando cambia la selección
+        sel_id_actual = seleccionado[0] if seleccionado else None
+        sel_id_anterior = st.session_state.get("edit_sel_id_actual")
+        if sel_id_actual != sel_id_anterior:
+            st.session_state["edit_sel_id_actual"] = sel_id_actual
+            if seleccionado:
+                _, d_v, df_v, fr_v, pm_v, obs_v = seleccionado
+                st.session_state["form_d"] = d_v or ""
+                st.session_state["form_df"] = df_v or ""
+                st.session_state["form_f"] = fr_v or ""
+                st.session_state["form_p"] = str(pm_v) if pm_v is not None else ""
+                st.session_state["form_obs"] = obs_v or ""
+            else:
+                st.session_state["form_d"] = ""
+                st.session_state["form_df"] = ""
+                st.session_state["form_f"] = ""
+                st.session_state["form_p"] = ""
+                st.session_state["form_obs"] = ""
+            st.rerun()
+
         if seleccionado:
-            id_e, d_e, df_e, fr_e, pm_e, obs_e = seleccionado
-            st.info(f"Editando ID {id_e}")
+            st.info(f"✏️ Editando ID {seleccionado[0]} - los campos están pre-llenados con los datos actuales")
+            id_e = seleccionado[0]
         else:
             id_e = None
-            d_e, df_e, fr_e, pm_e, obs_e = "", "", "", None, ""
+            if criterio_e:
+                st.caption("Llena los datos para AGREGAR un nuevo producto.")
 
         col1, col2 = st.columns(2)
         with col1:
-            d = st.text_input("DESCRIPCION", value=d_e, key="form_d")
-            fr = st.text_input("FRACCION (10 dígitos)", value=fr_e or "", key="form_f")
-            pm = st.text_input("PRECIO ESTIMADO (manual, opcional)", value=str(pm_e) if pm_e is not None else "", key="form_p")
+            d = st.text_input("DESCRIPCION", key="form_d")
+            fr = st.text_input("FRACCION (10 dígitos)", key="form_f")
+            pm = st.text_input("PRECIO ESTIMADO (manual, opcional)", key="form_p")
         with col2:
-            df_ = st.text_input("DESCRIPCION FACTURA", value=df_e, key="form_df")
-            obs = st.text_input("OBSERVACIONES", value=obs_e or "", key="form_obs")
+            df_ = st.text_input("DESCRIPCION FACTURA", key="form_df")
+            obs = st.text_input("OBSERVACIONES", key="form_obs")
 
         c1, c2, c3 = st.columns([1, 1, 4])
         with c1:
@@ -156,10 +177,14 @@ def modo_admin():
                     try:
                         if id_e:
                             db.actualizar_registro(id_e, d, df_, fr, obs, pm_val)
-                            st.success("✅ Actualizado")
+                            st.success(f"✅ Registro ID {id_e} actualizado")
                         else:
-                            db.agregar_registro(d, df_, fr, obs, pm_val)
-                            st.success("✅ Agregado")
+                            new_id = db.agregar_registro(d, df_, fr, obs, pm_val)
+                            st.success(f"✅ Nuevo producto agregado (ID {new_id})")
+                        # Limpiar form después de guardar
+                        for k in ["form_d", "form_df", "form_f", "form_p", "form_obs", "edit_sel_id_actual"]:
+                            if k in st.session_state:
+                                del st.session_state[k]
                         st.rerun()
                     except Exception as ex:
                         st.error(f"Error: {ex}")
@@ -167,7 +192,10 @@ def modo_admin():
             if id_e:
                 if st.button("🗑️ Eliminar"):
                     db.eliminar_registro(id_e)
-                    st.success("✅ Eliminado")
+                    for k in ["form_d", "form_df", "form_f", "form_p", "form_obs", "edit_sel_id_actual"]:
+                        if k in st.session_state:
+                            del st.session_state[k]
+                    st.success(f"✅ Registro ID {id_e} eliminado")
                     st.rerun()
 
     with tabs[2]:
