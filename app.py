@@ -69,7 +69,7 @@ def mostrar_resultados(resultados):
         background-color: #F3F4F6;
         color: #374151;
         padding: 10px 12px;
-        text-align: left;
+        text-align: center;
         font-weight: 600;
         border-bottom: 2px solid #D1D5DB;
         white-space: nowrap;
@@ -83,16 +83,18 @@ def mostrar_resultados(resultados):
         padding: 8px 12px;
         border-bottom: 1px solid #E5E7EB;
         vertical-align: top;
+        text-align: left;
     }
+    table.tabla-resultados tbody td.center { text-align: center; }
+    table.tabla-resultados tbody td.nowrap { white-space: nowrap; }
     table.tabla-resultados tbody tr.par td { background-color: #E0EBF5; }
     table.tabla-resultados tbody tr.impar td { background-color: #FFFFFF; }
     table.tabla-resultados td.precio-est {
         background-color: #991B1B !important;
         color: #FFFFFF;
         font-weight: 600;
-        text-align: right;
+        text-align: center;
     }
-    table.tabla-resultados td.num { text-align: right; }
     </style>
     """
 
@@ -102,14 +104,14 @@ def mostrar_resultados(resultados):
         arancel_fmt = f"{int(ar*100)}%" if ar is not None else ""
         precio_fmt = f"{pre:.2f}" if pre is not None else ""
         clase = "par" if idx % 2 == 0 else "impar"
-        precio_class = "precio-est" if precio_fmt else ""
+        precio_class = "precio-est" if precio_fmt else "center"
         filas_html += (
             f"<tr class='{clase}'>"
             f"<td>{_esc(desc)}</td>"
-            f"<td>{_esc(desc_fac)}</td>"
-            f"<td>{_esc(frac)}</td>"
-            f"<td class='num'>{_esc(arancel_fmt)}</td>"
-            f"<td>{_esc(umt)}</td>"
+            f"<td class='nowrap'>{_esc(desc_fac)}</td>"
+            f"<td class='center'>{_esc(frac)}</td>"
+            f"<td class='center'>{_esc(arancel_fmt)}</td>"
+            f"<td class='center'>{_esc(umt)}</td>"
             f"<td class='{precio_class}'>{_esc(precio_fmt)}</td>"
             f"<td>{_esc(obs)}</td>"
             f"</tr>"
