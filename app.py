@@ -1,6 +1,5 @@
 """
 CONSULTA DE FRACCIONES - v2 (Turso BD persistente)
-App web para clasificación arancelaria con BD persistente en la nube.
 """
 import streamlit as st
 import pandas as pd
@@ -15,7 +14,6 @@ st.set_page_config(
 )
 
 
-# === Inicialización ===
 @st.cache_resource
 def _init():
     db.init_db()
@@ -24,11 +22,10 @@ def _init():
 try:
     _init()
 except Exception as e:
-    st.error(f"❌ Error conectando a Turso. Verifica los Secrets en Streamlit. Detalle: {e}")
+    st.error(f"❌ Error conectando a Turso: {e}")
     st.stop()
 
 
-# === Login ===
 def login():
     st.title("🔎 CONSULTA DE FRACCIONES")
     st.subheader("Inicio de sesión")
@@ -47,7 +44,6 @@ def login():
     st.caption("Hay dos accesos: administrador (puede modificar) y consulta (solo búsqueda).")
 
 
-# === Formato de resultados ===
 def mostrar_resultados(resultados):
     if not resultados:
         st.info("Sin resultados.")
@@ -71,18 +67,17 @@ def mostrar_resultados(resultados):
 
     def estilo_precio(val):
         if val and str(val).strip() != "":
-            return "background-color: #C00000; color: white; font-weight: bold;"
+            return "background-color: #991B1B; color: white; font-weight: 600;"
         return ""
 
     def estilo_zebra(row):
         idx = row.name
-        return ['background-color: #E6F3FF' if idx % 2 == 0 else '' for _ in row]
+        return ['background-color: #F4F7FA' if idx % 2 == 0 else 'background-color: #FFFFFF' for _ in row]
 
     sty = df.style.apply(estilo_zebra, axis=1).map(estilo_precio, subset=['PRECIO ESTIMADO'])
     st.dataframe(sty, use_container_width=True, hide_index=False)
 
 
-# === Modo Consulta ===
 def modo_consulta():
     st.title("🔎 CONSULTA DE FRACCIONES")
     n_base, n_ar, n_est = db.contar_registros()
@@ -97,7 +92,6 @@ def modo_consulta():
             st.rerun()
 
 
-# === Modo Admin ===
 def modo_admin():
     st.title("🔎 CONSULTA DE FRACCIONES - Administrador")
     n_base, n_ar, n_est = db.contar_registros()
@@ -118,13 +112,11 @@ def modo_admin():
         "💾 Descargar Backup"
     ])
 
-    # --- Tab Consultar ---
     with tabs[0]:
         criterio = st.text_input("Escribe una palabra", key="busq_admin")
         if criterio:
             mostrar_resultados(db.buscar(criterio))
 
-    # --- Tab Agregar / Editar ---
     with tabs[1]:
         st.markdown("### Agregar nuevo producto o editar existente")
         criterio_e = st.text_input("Busca el producto que quieres editar (deja vacío para agregar nuevo)", key="busq_edit")
@@ -178,11 +170,10 @@ def modo_admin():
                     st.success("✅ Eliminado")
                     st.rerun()
 
-    # --- Tab Subir BASE ---
     with tabs[2]:
         st.markdown("### 📦 Reemplazar BASE de productos completa")
         st.warning("⚠️ Esto BORRA todos los productos actuales y los reemplaza por los del Excel que subas.")
-        st.caption("Formato esperado: pestaña BASE con columnas DESCRIPCION, DESCRIPCION FACTURA, FRACCION, [...], OBSERVACIONES. Si la col F tiene precio, se guarda como precio manual.")
+        st.caption("Formato: pestaña BASE con columnas DESCRIPCION, DESCRIPCION FACTURA, FRACCION, [...], OBSERVACIONES.")
         uploaded = st.file_uploader("Sube Excel con la BASE", type=["xlsx", "xlsm"], key="up_base")
         if uploaded:
             try:
@@ -190,14 +181,13 @@ def modo_admin():
                 df = df.dropna(subset=[df.columns[0]])
                 st.info(f"Detectados {len(df)} productos en el archivo.")
                 if st.button("⚠️ REEMPLAZAR BASE AHORA", type="primary"):
-                    with st.spinner("Subiendo a Turso... (puede tardar 30-60 seg)"):
+                    with st.spinner("Subiendo a Turso..."):
                         n = db.reemplazar_base(df)
                     st.success(f"✅ {n} productos cargados en Turso")
                     st.rerun()
             except Exception as ex:
                 st.error(f"Error: {ex}")
 
-    # --- Tab Subir LIGIE ---
     with tabs[3]:
         st.markdown("### 📤 Reemplazar LIGIE (ARANCELES)")
         st.warning("⚠️ Esto BORRA toda la LIGIE actual.")
@@ -208,14 +198,13 @@ def modo_admin():
                 df_ar = pd.read_excel(upl, sheet_name='ARANCELES', engine='openpyxl')
                 st.info(f"Detectadas {len(df_ar)} fracciones en el archivo.")
                 if st.button("⚠️ REEMPLAZAR LIGIE AHORA", type="primary"):
-                    with st.spinner("Subiendo a Turso... (puede tardar 1-2 min para 11k filas)"):
+                    with st.spinner("Subiendo a Turso..."):
                         n = db.reemplazar_aranceles(df_ar)
                     st.success(f"✅ {n} fracciones LIGIE cargadas")
                     st.rerun()
             except Exception as ex:
                 st.error(f"Error: {ex}")
 
-    # --- Tab Subir Precios Estimados ---
     with tabs[4]:
         st.markdown("### 💲 Reemplazar Precios Estimados")
         st.warning("⚠️ Esto BORRA todos los precios estimados actuales.")
@@ -233,7 +222,6 @@ def modo_admin():
             except Exception as ex:
                 st.error(f"Error: {ex}")
 
-    # --- Tab Backup ---
     with tabs[5]:
         st.markdown("### 💾 Descargar respaldo completo")
         st.caption("Genera un Excel con TODAS las tablas (BASE, ARANCELES, estimado) de la BD actual.")
@@ -251,7 +239,6 @@ def modo_admin():
             )
 
 
-# === Router ===
 if "modo" not in st.session_state:
     login()
 elif st.session_state["modo"] == "admin":
