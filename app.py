@@ -5,6 +5,7 @@ import streamlit as st
 import pandas as pd
 import database as db
 import io
+import html as html_lib
 from datetime import datetime
 
 st.set_page_config(
@@ -44,38 +45,93 @@ def login():
     st.caption("Hay dos accesos: administrador (puede modificar) y consulta (solo búsqueda).")
 
 
+def _esc(v):
+    return html_lib.escape(str(v)) if v is not None else ""
+
+
 def mostrar_resultados(resultados):
     if not resultados:
         st.info("Sin resultados.")
         return
     st.success(f"**{len(resultados)} resultados encontrados**")
-    data = []
-    for r in resultados:
+
+    css = """
+    <style>
+    .tabla-wrapper { overflow-x: auto; margin-top: 8px; border-radius: 6px; }
+    table.tabla-resultados {
+        width: 100%;
+        border-collapse: collapse;
+        font-family: 'Source Sans Pro', sans-serif;
+        font-size: 14px;
+        color: #1F2937;
+    }
+    table.tabla-resultados thead th {
+        background-color: #F3F4F6;
+        color: #374151;
+        padding: 10px 12px;
+        text-align: left;
+        font-weight: 600;
+        border-bottom: 2px solid #D1D5DB;
+        white-space: nowrap;
+    }
+    table.tabla-resultados thead th.col-factura {
+        background-color: #87CEEB;
+        color: #0F172A;
+        font-weight: 700;
+    }
+    table.tabla-resultados tbody td {
+        padding: 8px 12px;
+        border-bottom: 1px solid #E5E7EB;
+        vertical-align: top;
+    }
+    table.tabla-resultados tbody tr.par td { background-color: #E0EBF5; }
+    table.tabla-resultados tbody tr.impar td { background-color: #FFFFFF; }
+    table.tabla-resultados td.precio-est {
+        background-color: #991B1B !important;
+        color: #FFFFFF;
+        font-weight: 600;
+        text-align: right;
+    }
+    table.tabla-resultados td.num { text-align: right; }
+    </style>
+    """
+
+    filas_html = ""
+    for idx, r in enumerate(resultados):
         id_, desc, desc_fac, frac, ar, umt, pre, obs = r
         arancel_fmt = f"{int(ar*100)}%" if ar is not None else ""
         precio_fmt = f"{pre:.2f}" if pre is not None else ""
-        data.append({
-            "DESCRIPCION": desc or "",
-            "DESCRIPCION FACTURA": desc_fac or "",
-            "FRACCION": frac or "",
-            "ARANCEL": arancel_fmt,
-            "UMT": umt or "",
-            "PRECIO ESTIMADO": precio_fmt,
-            "OBSERVACIONES": obs or "",
-        })
-    df = pd.DataFrame(data)
+        clase = "par" if idx % 2 == 0 else "impar"
+        precio_class = "precio-est" if precio_fmt else ""
+        filas_html += (
+            f"<tr class='{clase}'>"
+            f"<td>{_esc(desc)}</td>"
+            f"<td>{_esc(desc_fac)}</td>"
+            f"<td>{_esc(frac)}</td>"
+            f"<td class='num'>{_esc(arancel_fmt)}</td>"
+            f"<td>{_esc(umt)}</td>"
+            f"<td class='{precio_class}'>{_esc(precio_fmt)}</td>"
+            f"<td>{_esc(obs)}</td>"
+            f"</tr>"
+        )
 
-    def estilo_precio(val):
-        if val and str(val).strip() != "":
-            return "background-color: #991B1B; color: white; font-weight: 600;"
-        return ""
-
-    def estilo_zebra(row):
-        idx = row.name
-        return ['background-color: #F4F7FA' if idx % 2 == 0 else 'background-color: #FFFFFF' for _ in row]
-
-    sty = df.style.apply(estilo_zebra, axis=1).map(estilo_precio, subset=['PRECIO ESTIMADO'])
-    st.dataframe(sty, use_container_width=True, hide_index=False)
+    tabla_html = (
+        css +
+        "<div class='tabla-wrapper'>"
+        "<table class='tabla-resultados'>"
+        "<thead><tr>"
+        "<th>DESCRIPCION</th>"
+        "<th class='col-factura'>DESCRIPCION FACTURA</th>"
+        "<th>FRACCION</th>"
+        "<th>ARANCEL</th>"
+        "<th>UMT</th>"
+        "<th>PRECIO ESTIMADO</th>"
+        "<th>OBSERVACIONES</th>"
+        "</tr></thead><tbody>"
+        + filas_html +
+        "</tbody></table></div>"
+    )
+    st.markdown(tabla_html, unsafe_allow_html=True)
 
 
 def modo_consulta():
@@ -130,7 +186,6 @@ def modo_admin():
                     sel_id = int(sel.split(" - ")[0])
                     seleccionado = db.obtener_registro(sel_id)
 
-        # FIX: pre-llenar campos en session_state cuando cambia la selección
         sel_id_actual = seleccionado[0] if seleccionado else None
         sel_id_anterior = st.session_state.get("edit_sel_id_actual")
         if sel_id_actual != sel_id_anterior:
@@ -181,7 +236,6 @@ def modo_admin():
                         else:
                             new_id = db.agregar_registro(d, df_, fr, obs, pm_val)
                             st.success(f"✅ Nuevo producto agregado (ID {new_id})")
-                        # Limpiar form después de guardar
                         for k in ["form_d", "form_df", "form_f", "form_p", "form_obs", "edit_sel_id_actual"]:
                             if k in st.session_state:
                                 del st.session_state[k]
