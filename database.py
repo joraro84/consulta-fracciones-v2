@@ -393,3 +393,41 @@ def obtener_password(perfil):
 def cambiar_password(perfil, nuevo_valor):
     clave = f"pass_{perfil}"
     _execute("INSERT OR REPLACE INTO metadata (clave, valor) VALUES (?, ?)", [clave, nuevo_valor])
+
+
+# Version mejorada: lee columnas por NOMBRE (acepta backup de 5 cols o formato original de 7)
+def reemplazar_base(df):
+    _execute("DELETE FROM base", [])
+    cols = {}
+    for i, c in enumerate(df.columns):
+        cols[normalizar(str(c))] = i
+    idx_desc = cols.get("DESCRIPCION", 0)
+    idx_fac = cols.get("DESCRIPCION FACTURA", 1)
+    idx_frac = cols.get("FRACCION", 2)
+    idx_pm = cols.get("PRECIO ESTIMADO")
+    idx_obs = cols.get("OBSERVACIONES")
+    rows = []
+    for _, row in df.iterrows():
+        try:
+            desc = str(row.iloc[idx_desc]) if not pd.isna(row.iloc[idx_desc]) else ""
+            if not desc.strip():
+                continue
+            desc_fac = str(row.iloc[idx_fac]) if not pd.isna(row.iloc[idx_fac]) else ""
+            fraccion = normalizar_fraccion(row.iloc[idx_frac])
+            pm = None
+            if idx_pm is not None and not pd.isna(row.iloc[idx_pm]):
+                try:
+                    v = row.iloc[idx_pm]
+                    pm = float(v) if isinstance(v, (int, float)) else float(str(v).strip())
+                except (ValueError, TypeError):
+                    pm = None
+            obs = ""
+            if idx_obs is not None and not pd.isna(row.iloc[idx_obs]):
+                obs = str(row.iloc[idx_obs])
+            rows.append([desc, desc_fac, fraccion, pm, obs, normalizar(desc)])
+        except Exception:
+            continue
+    return _bulk_insert(
+        "INSERT INTO base (descripcion, descripcion_factura, fraccion, precio_manual, observaciones, desc_norm) VALUES (?,?,?,?,?,?)",
+        rows
+    )
