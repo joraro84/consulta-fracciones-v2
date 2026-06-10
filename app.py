@@ -14,10 +14,8 @@ st.set_page_config(
     layout="wide"
 )
 
-# CSS para ocultar todo lo de Streamlit Cloud + estilizar inputs + ocultar sidebar
 HIDE_STREAMLIT = """
 <style>
-/* Ocultar header completo de Streamlit Cloud */
 header[data-testid="stHeader"] {display: none !important; visibility: hidden !important; height: 0 !important;}
 [data-testid="stToolbar"] {display: none !important;}
 .stDeployButton, [data-testid="stDeployButton"], [data-testid="stAppDeployButton"] {display: none !important;}
@@ -25,8 +23,6 @@ header[data-testid="stHeader"] {display: none !important; visibility: hidden !im
 [data-testid="stMainMenu"], [data-testid="stHeaderActionElements"] {display: none !important;}
 .stApp > header, .stApp {margin-top: 0 !important;}
 .stApp h1 a, .stApp h2 a, .stApp h3 a {display: none !important;}
-
-/* Ocultar TODO lo del footer y badges (gato, Streamlit, hosted, etc.) */
 footer {display: none !important; visibility: hidden !important;}
 .viewerBadge_container__1QSob, [class*="viewerBadge"], div[class*="viewerBadge"], a[class*="viewerBadge"] {display: none !important;}
 .viewerBadge_link__qRIco, .viewerBadge_text__1JaDK {display: none !important;}
@@ -34,13 +30,9 @@ footer {display: none !important; visibility: hidden !important;}
 .stStatusWidget, ._terminalButton, ._profileContainer {display: none !important;}
 [class*="_link_"], [class*="_container_"][class*="viewer"] {display: none !important;}
 a[href*="streamlit.io"], a[href*="github.com"], a[href*="share.streamlit"], a[href*="streamlit.app"] {display: none !important;}
-
-/* OCULTAR SIDEBAR completamente */
 section[data-testid="stSidebar"] {display: none !important; width: 0 !important;}
 [data-testid="collapsedControl"], button[kind="header"], [data-testid="stSidebarCollapsedControl"] {display: none !important;}
 .stApp > div:first-child > div:first-child {margin-left: 0 !important;}
-
-/* BORDE OSCURO en inputs - búsqueda y login */
 .stTextInput > div > div, .stPasswordInput > div > div, [data-baseweb="input"], [data-baseweb="base-input"] {
     border: 1.5px solid #4B5563 !important;
     border-radius: 6px !important;
@@ -52,13 +44,6 @@ section[data-testid="stSidebar"] {display: none !important; width: 0 !important;
 .stTextInput > div > div:focus-within, .stPasswordInput > div > div:focus-within, [data-baseweb="input"]:focus-within {
     border: 2px solid #1F2937 !important;
     box-shadow: 0 0 0 1px #1F2937 !important;
-}
-
-/* Botón "Salir" estilo más sutil */
-.btn-salir button {
-    background-color: #6B7280 !important;
-    color: white !important;
-    border: none !important;
 }
 </style>
 """
@@ -94,8 +79,8 @@ def login():
     st.subheader("Inicio de sesión")
     pwd = st.text_input("Contraseña", type="password", key="pwd_login")
     if st.button("Entrar", type="primary", use_container_width=True):
-        admin_pwd = st.secrets.get("passwords", {}).get("admin", "admin2026")
-        cons_pwd = st.secrets.get("passwords", {}).get("consulta", "agencia2026")
+        admin_pwd = db.obtener_password("admin") or st.secrets.get("passwords", {}).get("admin", "admin2026")
+        cons_pwd = db.obtener_password("consulta") or st.secrets.get("passwords", {}).get("consulta", "agencia2026")
         if pwd == admin_pwd:
             st.session_state["modo"] = "admin"
             st.rerun()
@@ -116,50 +101,35 @@ def mostrar_resultados(resultados):
         st.info("Sin resultados.")
         return
     st.success(f"**{len(resultados)} resultados encontrados**")
-
     css = """
     <style>
     .tabla-wrapper { overflow-x: auto; margin-top: 8px; border-radius: 6px; }
     table.tabla-resultados {
-        width: 100%;
-        border-collapse: collapse;
-        font-family: 'Source Sans Pro', sans-serif;
-        font-size: 14px;
-        color: #1F2937;
+        width: 100%; border-collapse: collapse;
+        font-family: 'Source Sans Pro', sans-serif; font-size: 14px; color: #1F2937;
     }
     table.tabla-resultados thead th {
-        background-color: #F3F4F6;
-        color: #374151;
-        padding: 10px 12px;
-        text-align: center;
-        font-weight: 600;
-        border-bottom: 2px solid #D1D5DB;
-        white-space: nowrap;
+        background-color: #F3F4F6; color: #374151; padding: 10px 12px;
+        text-align: center; font-weight: 600;
+        border-bottom: 2px solid #D1D5DB; white-space: nowrap;
     }
     table.tabla-resultados thead th.col-factura {
-        background-color: #87CEEB;
-        color: #0F172A;
-        font-weight: 700;
+        background-color: #87CEEB; color: #0F172A; font-weight: 700;
     }
     table.tabla-resultados tbody td {
-        padding: 8px 12px;
-        border-bottom: 1px solid #E5E7EB;
-        vertical-align: top;
-        text-align: left;
+        padding: 8px 12px; border-bottom: 1px solid #E5E7EB;
+        vertical-align: top; text-align: left;
     }
     table.tabla-resultados tbody td.center { text-align: center; }
     table.tabla-resultados tbody td.nowrap { white-space: nowrap; }
     table.tabla-resultados tbody tr.par td { background-color: #E0EBF5; }
     table.tabla-resultados tbody tr.impar td { background-color: #FFFFFF; }
     table.tabla-resultados td.precio-est {
-        background-color: #991B1B !important;
-        color: #FFFFFF;
-        font-weight: 600;
-        text-align: center;
+        background-color: #991B1B !important; color: #FFFFFF;
+        font-weight: 600; text-align: center;
     }
     </style>
     """
-
     filas_html = ""
     for idx, r in enumerate(resultados):
         id_, desc, desc_fac, frac, ar, umt, pre, obs = r
@@ -178,7 +148,6 @@ def mostrar_resultados(resultados):
             f"<td>{_esc(obs)}</td>"
             f"</tr>"
         )
-
     tabla_html = (
         css +
         "<div class='tabla-wrapper'>"
@@ -186,11 +155,7 @@ def mostrar_resultados(resultados):
         "<thead><tr>"
         "<th>DESCRIPCION</th>"
         "<th class='col-factura'>DESCRIPCION FACTURA</th>"
-        "<th>FRACCION</th>"
-        "<th>ARANCEL</th>"
-        "<th>UMT</th>"
-        "<th>PRECIO ESTIMADO</th>"
-        "<th>OBSERVACIONES</th>"
+        "<th>FRACCION</th><th>ARANCEL</th><th>UMT</th><th>PRECIO ESTIMADO</th><th>OBSERVACIONES</th>"
         "</tr></thead><tbody>"
         + filas_html +
         "</tbody></table></div>"
@@ -219,7 +184,8 @@ def modo_admin():
         "📦 Subir BASE (Excel)",
         "📤 Subir LIGIE (Excel)",
         "💲 Subir Precios (Excel)",
-        "💾 Descargar Backup"
+        "💾 Descargar Backup",
+        "🔑 Contraseñas"
     ])
 
     with tabs[0]:
@@ -373,6 +339,40 @@ def modo_admin():
                 file_name=f"respaldo_consulta_{fecha}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
+
+    with tabs[6]:
+        st.markdown("### 🔑 Cambiar contraseñas de acceso")
+        st.caption("Aquí actualizas la contraseña de cada perfil. El cambio aplica al instante.")
+
+        st.markdown("#### Perfil ADMINISTRADOR")
+        st.caption("Solo tú. Si la cambias, escribe la nueva en un lugar seguro porque NO se muestra después.")
+        with st.form("form_pass_admin", clear_on_submit=True):
+            new_admin = st.text_input("Nueva contraseña admin", type="password", key="new_pass_admin")
+            if st.form_submit_button("💾 Actualizar contraseña ADMIN", type="primary"):
+                if not new_admin or not new_admin.strip():
+                    st.error("Escribe una contraseña válida")
+                else:
+                    try:
+                        db.cambiar_password("admin", new_admin.strip())
+                        st.success("✅ Contraseña ADMIN actualizada")
+                    except Exception as ex:
+                        st.error(f"Error: {ex}")
+
+        st.divider()
+
+        st.markdown("#### Perfil CONSULTA (los 20 usuarios)")
+        st.caption("Cuando cambies esta contraseña, avísales a tus 20 usuarios la nueva.")
+        with st.form("form_pass_consulta", clear_on_submit=True):
+            new_cons = st.text_input("Nueva contraseña consulta", type="password", key="new_pass_cons")
+            if st.form_submit_button("💾 Actualizar contraseña CONSULTA", type="primary"):
+                if not new_cons or not new_cons.strip():
+                    st.error("Escribe una contraseña válida")
+                else:
+                    try:
+                        db.cambiar_password("consulta", new_cons.strip())
+                        st.success("✅ Contraseña CONSULTA actualizada")
+                    except Exception as ex:
+                        st.error(f"Error: {ex}")
 
 
 if "modo" not in st.session_state:

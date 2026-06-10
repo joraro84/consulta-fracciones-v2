@@ -13,11 +13,8 @@ def _get_creds():
 
 
 def _to_arg(value):
-    """Convierte valor Python a formato Turso hrana v2.
-    IMPORTANTE: float debe enviarse como número, no string."""
     if value is None:
         return {"type": "null"}
-    # Detectar NaN/NaT
     try:
         if pd.isna(value):
             return {"type": "null"}
@@ -28,8 +25,7 @@ def _to_arg(value):
     if isinstance(value, int):
         return {"type": "integer", "value": str(value)}
     if isinstance(value, float):
-        return {"type": "float", "value": float(value)}  # ¡NÚMERO, no string!
-    # numpy types
+        return {"type": "float", "value": float(value)}
     try:
         import numpy as np
         if isinstance(value, np.integer):
@@ -362,3 +358,22 @@ def exportar_excel(ruta_salida):
         df_base.to_excel(writer, sheet_name='BASE', index=False)
         df_ar.to_excel(writer, sheet_name='ARANCELES', index=False)
         df_est.to_excel(writer, sheet_name='estimado', index=False)
+
+
+def obtener_password(perfil):
+    """Lee contraseña del perfil ('admin' o 'consulta') desde Turso.
+    Si no existe en Turso, la inicializa con el valor de Streamlit Secrets."""
+    clave = f"pass_{perfil}"
+    rows = _query("SELECT valor FROM metadata WHERE clave = ?", [clave])
+    if rows:
+        return rows[0][0]
+    default = st.secrets.get("passwords", {}).get(perfil, "")
+    if default:
+        _execute("INSERT OR REPLACE INTO metadata (clave, valor) VALUES (?, ?)", [clave, default])
+    return default
+
+
+def cambiar_password(perfil, nuevo_valor):
+    """Actualiza la contraseña del perfil ('admin' o 'consulta') en Turso."""
+    clave = f"pass_{perfil}"
+    _execute("INSERT OR REPLACE INTO metadata (clave, valor) VALUES (?, ?)", [clave, nuevo_valor])
