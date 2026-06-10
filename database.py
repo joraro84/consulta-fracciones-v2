@@ -377,3 +377,19 @@ def cambiar_password(perfil, nuevo_valor):
     """Actualiza la contraseña del perfil ('admin' o 'consulta') en Turso."""
     clave = f"pass_{perfil}"
     _execute("INSERT OR REPLACE INTO metadata (clave, valor) VALUES (?, ?)", [clave, nuevo_valor])
+
+
+def obtener_password(perfil):
+    clave = f"pass_{perfil}"
+    rows = _query("SELECT valor FROM metadata WHERE clave = ?", [clave])
+    if rows:
+        return rows[0][0]
+    default = st.secrets.get("passwords", {}).get(perfil, "")
+    if default:
+        _execute("INSERT OR REPLACE INTO metadata (clave, valor) VALUES (?, ?)", [clave, default])
+    return default
+
+
+def cambiar_password(perfil, nuevo_valor):
+    clave = f"pass_{perfil}"
+    _execute("INSERT OR REPLACE INTO metadata (clave, valor) VALUES (?, ?)", [clave, nuevo_valor])
