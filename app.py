@@ -114,7 +114,7 @@ def mostrar_resultados(resultados):
         border-bottom: 2px solid #3E4C59; white-space: nowrap;
     }
     table.tabla-resultados thead th.col-factura {
-        background-color: #5C7791; color: #0B1620; font-weight: 700;
+        background-color: #3B9EFF; color: #0B1620; font-weight: 700;
     }
     table.tabla-resultados tbody td {
         padding: 8px 12px; border-bottom: 1px solid #2E3A45;
