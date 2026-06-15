@@ -34,16 +34,16 @@ section[data-testid="stSidebar"] {display: none !important; width: 0 !important;
 [data-testid="collapsedControl"], button[kind="header"], [data-testid="stSidebarCollapsedControl"] {display: none !important;}
 .stApp > div:first-child > div:first-child {margin-left: 0 !important;}
 .stTextInput > div > div, .stPasswordInput > div > div, [data-baseweb="input"], [data-baseweb="base-input"] {
-    border: 1.5px solid #4B5563 !important;
+    border: 1.5px solid #3E4C59 !important;
     border-radius: 6px !important;
 }
 .stTextInput input, .stPasswordInput input, [data-baseweb="input"] input {
-    background-color: #FFFFFF !important;
-    color: #1F2937 !important;
+    background-color: #1F2933 !important;
+    color: #E4E7EB !important;
 }
 .stTextInput > div > div:focus-within, .stPasswordInput > div > div:focus-within, [data-baseweb="input"]:focus-within {
-    border: 2px solid #1F2937 !important;
-    box-shadow: 0 0 0 1px #1F2937 !important;
+    border: 2px solid #9FB3C8 !important;
+    box-shadow: 0 0 0 1px #9FB3C8 !important;
 }
 </style>
 """
@@ -106,28 +106,36 @@ def mostrar_resultados(resultados):
     .tabla-wrapper { overflow-x: auto; margin-top: 8px; border-radius: 6px; }
     table.tabla-resultados {
         width: 100%; border-collapse: collapse;
-        font-family: 'Source Sans Pro', sans-serif; font-size: 14px; color: #1F2937;
+        font-family: 'Source Sans Pro', sans-serif; font-size: 14px; color: #E4E7EB;
     }
     table.tabla-resultados thead th {
-        background-color: #F3F4F6; color: #374151; padding: 10px 12px;
+        background-color: #323F4B; color: #CBD2D9; padding: 10px 12px;
         text-align: center; font-weight: 600;
-        border-bottom: 2px solid #D1D5DB; white-space: nowrap;
+        border-bottom: 2px solid #3E4C59; white-space: nowrap;
     }
     table.tabla-resultados thead th.col-factura {
-        background-color: #87CEEB; color: #0F172A; font-weight: 700;
+        background-color: #5C7791; color: #0B1620; font-weight: 700;
     }
     table.tabla-resultados tbody td {
-        padding: 8px 12px; border-bottom: 1px solid #E5E7EB;
+        padding: 8px 12px; border-bottom: 1px solid #2E3A45;
         vertical-align: top; text-align: left;
     }
     table.tabla-resultados tbody td.center { text-align: center; }
     table.tabla-resultados tbody td.nowrap { white-space: nowrap; }
-    table.tabla-resultados tbody tr.par td { background-color: #E0EBF5; }
-    table.tabla-resultados tbody tr.impar td { background-color: #FFFFFF; }
-    table.tabla-resultados td.precio-est {
-        background-color: #991B1B !important; color: #FFFFFF;
-        font-weight: 600; text-align: center;
+    table.tabla-resultados tbody tr.par td { background-color: #2A3744; }
+    table.tabla-resultados tbody tr.impar td { background-color: #1F2933; }
+    table.tabla-resultados td.precio-est { text-align: center; }
+    table.tabla-resultados span.pill-precio {
+        display: inline-block; border: 1.5px solid #FF4D4D; color: #FFFFFF;
+        box-shadow: 0 0 6px rgba(255,77,77,0.55); border-radius: 6px;
+        padding: 3px 10px; font-weight: 500;
     }
+    table.tabla-resultados span.pill-obs {
+        display: inline-block; border: 1.5px solid #FFD11A; color: #FFFFFF;
+        box-shadow: 0 0 6px rgba(255,209,26,0.5); border-radius: 6px;
+        padding: 3px 10px; font-weight: 500;
+    }
+    table.tabla-resultados td.obs-vacia { color: #7B8794; }
     </style>
     """
     filas_html = ""
@@ -136,7 +144,15 @@ def mostrar_resultados(resultados):
         arancel_fmt = f"{int(ar*100)}%" if ar is not None else ""
         precio_fmt = f"{pre:.2f}" if pre is not None else ""
         clase = "par" if idx % 2 == 0 else "impar"
-        precio_class = "precio-est" if precio_fmt else "center"
+        if precio_fmt:
+            precio_cell = f"<td class='precio-est'><span class='pill-precio'>{_esc(precio_fmt)}</span></td>"
+        else:
+            precio_cell = "<td class='center'></td>"
+        obs_txt = _esc(obs) if obs else ""
+        if obs_txt:
+            obs_cell = f"<td><span class='pill-obs'>{obs_txt}</span></td>"
+        else:
+            obs_cell = "<td class='obs-vacia'>—</td>"
         filas_html += (
             f"<tr class='{clase}'>"
             f"<td>{_esc(desc)}</td>"
@@ -144,8 +160,8 @@ def mostrar_resultados(resultados):
             f"<td class='center'>{_esc(frac)}</td>"
             f"<td class='center'>{_esc(arancel_fmt)}</td>"
             f"<td class='center'>{_esc(umt)}</td>"
-            f"<td class='{precio_class}'>{_esc(precio_fmt)}</td>"
-            f"<td>{_esc(obs)}</td>"
+            f"{precio_cell}"
+            f"{obs_cell}"
             f"</tr>"
         )
     tabla_html = (
