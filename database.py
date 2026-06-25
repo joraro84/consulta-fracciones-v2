@@ -431,3 +431,39 @@ def reemplazar_base(df):
         "INSERT INTO base (descripcion, descripcion_factura, fraccion, precio_manual, observaciones, desc_norm) VALUES (?,?,?,?,?,?)",
         rows
     )
+
+
+# Busqueda mejorada: detecta automaticamente fraccion (solo digitos) o descripcion
+def buscar(criterio, limite=100):
+    if not criterio or not criterio.strip():
+        return []
+    limpio = criterio.strip()
+    for ch in [' ', '.', '-']:
+        limpio = limpio.replace(ch, '')
+    if limpio.isdigit():
+        prefijo = limpio[:10]
+        return _query("""
+            SELECT b.id, b.descripcion, b.descripcion_factura, b.fraccion,
+                   a.arancel, a.umt,
+                   COALESCE(b.precio_manual, e.precio) AS precio_final,
+                   b.observaciones
+            FROM base b
+            LEFT JOIN aranceles a ON a.fraccion = b.fraccion
+            LEFT JOIN estimado e ON e.fraccion = b.fraccion
+            WHERE b.fraccion LIKE ?
+            LIMIT ?
+        """, [f'{prefijo}%', limite])
+    cn = normalizar(criterio)
+    if not cn:
+        return []
+    return _query("""
+        SELECT b.id, b.descripcion, b.descripcion_factura, b.fraccion,
+               a.arancel, a.umt,
+               COALESCE(b.precio_manual, e.precio) AS precio_final,
+               b.observaciones
+        FROM base b
+        LEFT JOIN aranceles a ON a.fraccion = b.fraccion
+        LEFT JOIN estimado e ON e.fraccion = b.fraccion
+        WHERE b.desc_norm LIKE ?
+        LIMIT ?
+    """, [f'%{cn}%', limite])
