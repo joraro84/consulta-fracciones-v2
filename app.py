@@ -211,6 +211,9 @@ def modo_admin():
 
     with tabs[1]:
         st.markdown("### Agregar nuevo producto o editar existente")
+        if st.session_state.get("msg_guardado"):
+            st.success(st.session_state["msg_guardado"])
+            del st.session_state["msg_guardado"]
         criterio_e = st.text_input("Busca el producto que quieres editar (deja vacío para agregar nuevo)", key="busq_edit")
         seleccionado = None
         if criterio_e:
@@ -268,11 +271,11 @@ def modo_admin():
                     try:
                         if id_e:
                             db.actualizar_registro(id_e, d, df_, fr, obs, pm_val)
-                            st.success(f"✅ Registro ID {id_e} actualizado")
+                            st.session_state["msg_guardado"] = f"✅ Registro ID {id_e} actualizado correctamente"
                         else:
                             new_id = db.agregar_registro(d, df_, fr, obs, pm_val)
-                            st.success(f"✅ Nuevo producto agregado (ID {new_id})")
-                        for k in ["form_d", "form_df", "form_f", "form_p", "form_obs", "edit_sel_id_actual"]:
+                            st.session_state["msg_guardado"] = f"✅ Nuevo producto agregado correctamente (ID {new_id})"
+                        for k in ["form_d", "form_df", "form_f", "form_p", "form_obs", "edit_sel_id_actual", "busq_edit", "sel_edit"]:
                             if k in st.session_state:
                                 del st.session_state[k]
                         st.rerun()
@@ -282,10 +285,10 @@ def modo_admin():
             if id_e:
                 if st.button("🗑️ Eliminar"):
                     db.eliminar_registro(id_e)
-                    for k in ["form_d", "form_df", "form_f", "form_p", "form_obs", "edit_sel_id_actual"]:
+                    for k in ["form_d", "form_df", "form_f", "form_p", "form_obs", "edit_sel_id_actual", "busq_edit", "sel_edit"]:
                         if k in st.session_state:
                             del st.session_state[k]
-                    st.success(f"✅ Registro ID {id_e} eliminado")
+                    st.session_state["msg_guardado"] = f"✅ Registro ID {id_e} eliminado correctamente"
                     st.rerun()
 
     with tabs[2]:
