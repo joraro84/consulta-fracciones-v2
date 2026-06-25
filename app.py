@@ -227,7 +227,15 @@ def modo_admin():
 
         sel_id_actual = seleccionado[0] if seleccionado else None
         sel_id_anterior = st.session_state.get("edit_sel_id_actual")
-        if sel_id_actual != sel_id_anterior:
+        if st.session_state.get("limpiar_form"):
+            del st.session_state["limpiar_form"]
+            st.session_state["form_d"] = ""
+            st.session_state["form_df"] = ""
+            st.session_state["form_f"] = ""
+            st.session_state["form_p"] = ""
+            st.session_state["form_obs"] = ""
+            st.session_state["edit_sel_id_actual"] = None
+        elif sel_id_actual != sel_id_anterior:
             st.session_state["edit_sel_id_actual"] = sel_id_actual
             if seleccionado:
                 _, d_v, df_v, fr_v, pm_v, obs_v = seleccionado
@@ -275,7 +283,8 @@ def modo_admin():
                         else:
                             new_id = db.agregar_registro(d, df_, fr, obs, pm_val)
                             st.session_state["msg_guardado"] = f"✅ Nuevo producto agregado correctamente (ID {new_id})"
-                        for k in ["form_d", "form_df", "form_f", "form_p", "form_obs", "edit_sel_id_actual", "busq_edit", "sel_edit"]:
+                        st.session_state["limpiar_form"] = True
+                        for k in ["busq_edit", "sel_edit"]:
                             if k in st.session_state:
                                 del st.session_state[k]
                         st.rerun()
@@ -285,10 +294,11 @@ def modo_admin():
             if id_e:
                 if st.button("🗑️ Eliminar"):
                     db.eliminar_registro(id_e)
-                    for k in ["form_d", "form_df", "form_f", "form_p", "form_obs", "edit_sel_id_actual", "busq_edit", "sel_edit"]:
+                    st.session_state["msg_guardado"] = f"✅ Registro ID {id_e} eliminado correctamente"
+                    st.session_state["limpiar_form"] = True
+                    for k in ["busq_edit", "sel_edit"]:
                         if k in st.session_state:
                             del st.session_state[k]
-                    st.session_state["msg_guardado"] = f"✅ Registro ID {id_e} eliminado correctamente"
                     st.rerun()
 
     with tabs[2]:
