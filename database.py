@@ -1,450 +1,402 @@
 """
-Base de datos para CONSULTA DE FRACCIONES v2 - Turso vía HTTP API
+CONSULTA DE FRACCIONES - v2 (Turso BD persistente)
 """
-import requests
-import pandas as pd
 import streamlit as st
+import pandas as pd
+import database as db
+import io
+import html as html_lib
+from datetime import datetime
 
+st.set_page_config(
+    page_title="Consulta de Fracciones",
+    page_icon="🔎",
+    layout="wide"
+)
 
-def _get_creds():
-    base_url = st.secrets["turso"]["url"].replace("libsql://", "https://")
-    token = st.secrets["turso"]["token"]
-    return base_url, token
-
-
-def _to_arg(value):
-    if value is None:
-        return {"type": "null"}
-    try:
-        if pd.isna(value):
-            return {"type": "null"}
-    except (TypeError, ValueError):
-        pass
-    if isinstance(value, bool):
-        return {"type": "integer", "value": str(int(value))}
-    if isinstance(value, int):
-        return {"type": "integer", "value": str(value)}
-    if isinstance(value, float):
-        return {"type": "float", "value": float(value)}
-    try:
-        import numpy as np
-        if isinstance(value, np.integer):
-            return {"type": "integer", "value": str(int(value))}
-        if isinstance(value, np.floating):
-            return {"type": "float", "value": float(value)}
-    except ImportError:
-        pass
-    return {"type": "text", "value": str(value)}
-
-
-def _arg_to_py(arg):
-    t = arg.get("type")
-    if t == "null":
-        return None
-    v = arg.get("value")
-    if t == "integer":
-        return int(v) if v is not None else None
-    if t == "float":
-        return float(v) if v is not None else None
-    return v
+HIDE_STREAMLIT = """
+<style>
+header[data-testid="stHeader"] {display: none !important; visibility: hidden !important; height: 0 !important;}
+[data-testid="stToolbar"] {display: none !important;}
+.stDeployButton, [data-testid="stDeployButton"], [data-testid="stAppDeployButton"] {display: none !important;}
+#MainMenu, .stApp [data-testid="stStatusWidget"] {display: none !important;}
+[data-testid="stMainMenu"], [data-testid="stHeaderActionElements"] {display: none !important;}
+.stApp > header, .stApp {margin-top: 0 !important;}
+.stApp h1 a, .stApp h2 a, .stApp h3 a {display: none !important;}
+footer {display: none !important; visibility: hidden !important;}
+.viewerBadge_container__1QSob, [class*="viewerBadge"], div[class*="viewerBadge"], a[class*="viewerBadge"] {display: none !important;}
+.viewerBadge_link__qRIco, .viewerBadge_text__1JaDK {display: none !important;}
+[data-testid="stDecoration"], [data-testid="stStatusWidget"], [data-testid="stConnectionStatus"] {display: none !important;}
+.stStatusWidget, ._terminalButton, ._profileContainer {display: none !important;}
+[class*="_link_"], [class*="_container_"][class*="viewer"] {display: none !important;}
+a[href*="streamlit.io"], a[href*="github.com"], a[href*="share.streamlit"], a[href*="streamlit.app"] {display: none !important;}
+section[data-testid="stSidebar"] {display: none !important; width: 0 !important;}
+[data-testid="collapsedControl"], button[kind="header"], [data-testid="stSidebarCollapsedControl"] {display: none !important;}
+.stApp > div:first-child > div:first-child {margin-left: 0 !important;}
+.stTextInput > div > div, .stPasswordInput > div > div, [data-baseweb="input"], [data-baseweb="base-input"] {
+    border: 1.5px solid #3E4C59 !important;
+    border-radius: 6px !important;
+}
+.stTextInput input, .stPasswordInput input, [data-baseweb="input"] input {
+    background-color: #1F2933 !important;
+    color: #E4E7EB !important;
+}
+.stTextInput > div > div:focus-within, .stPasswordInput > div > div:focus-within, [data-baseweb="input"]:focus-within {
+    border: 2px solid #9FB3C8 !important;
+    box-shadow: 0 0 0 1px #9FB3C8 !important;
+}
+</style>
+"""
+st.markdown(HIDE_STREAMLIT, unsafe_allow_html=True)
 
 
 @st.cache_resource
-def _session():
-    s = requests.Session()
-    base_url, token = _get_creds()
-    s.headers.update({"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
-    return s, base_url
+def _init():
+    db.init_db()
+    return True
+
+try:
+    _init()
+except Exception as e:
+    st.error(f"❌ Error conectando a Turso: {e}")
+    st.stop()
 
 
-def _post_pipeline(stmts):
-    s, base_url = _session()
-    reqs = []
-    for st_item in stmts:
-        if isinstance(st_item, tuple):
-            sql, args = st_item
-            reqs.append({"type": "execute", "stmt": {"sql": sql, "args": [_to_arg(a) for a in args]}})
+def header_con_salir(titulo):
+    col_t, col_s = st.columns([8, 1])
+    with col_t:
+        st.title(titulo)
+    with col_s:
+        st.write("")
+        if st.button("🚪 Salir", key=f"logout_{titulo[:10]}", use_container_width=True):
+            for k in list(st.session_state.keys()):
+                del st.session_state[k]
+            st.rerun()
+
+
+def login():
+    st.title("🔎 CONSULTA DE FRACCIONES")
+    st.subheader("Inicio de sesión")
+    pwd = st.text_input("Contraseña", type="password", key="pwd_login")
+    if st.button("Entrar", type="primary", use_container_width=True):
+        admin_pwd = db.obtener_password("admin") or st.secrets.get("passwords", {}).get("admin", "admin2026")
+        cons_pwd = db.obtener_password("consulta") or st.secrets.get("passwords", {}).get("consulta", "agencia2026")
+        if pwd == admin_pwd:
+            st.session_state["modo"] = "admin"
+            st.rerun()
+        elif pwd == cons_pwd:
+            st.session_state["modo"] = "consulta"
+            st.rerun()
         else:
-            reqs.append({"type": "execute", "stmt": {"sql": st_item}})
-    reqs.append({"type": "close"})
-    r = s.post(f"{base_url}/v2/pipeline", json={"requests": reqs}, timeout=120)
-    if not r.ok:
-        raise RuntimeError(f"Turso HTTP {r.status_code}: {r.text[:500]}")
-    data = r.json()
-    for res in data.get("results", []):
-        if res.get("type") == "error":
-            err = res.get("error", {})
-            raise RuntimeError(f"Turso SQL error: {err.get('message', str(err))[:300]}")
-    return data
+            st.error("Contraseña incorrecta")
+    st.caption("Hay dos accesos: administrador (puede modificar) y consulta (solo búsqueda).")
 
 
-def _query(sql, args=None):
-    args = args or []
-    s, base_url = _session()
-    r = s.post(
-        f"{base_url}/v2/pipeline",
-        json={"requests": [
-            {"type": "execute", "stmt": {"sql": sql, "args": [_to_arg(a) for a in args]}},
-            {"type": "close"}
-        ]},
-        timeout=60
-    )
-    if not r.ok:
-        raise RuntimeError(f"Turso HTTP {r.status_code}: {r.text[:500]}")
-    data = r.json()
-    res = data["results"][0]
-    if res.get("type") == "error":
-        raise RuntimeError(f"Turso SQL: {res.get('error',{}).get('message', '')[:300]}")
-    result = res["response"]["result"]
-    rows = []
-    for row in result.get("rows", []):
-        rows.append(tuple(_arg_to_py(c) for c in row))
-    return rows
+def _esc(v):
+    return html_lib.escape(str(v)) if v is not None else ""
 
 
-def _execute(sql, args=None):
-    args = args or []
-    s, base_url = _session()
-    r = s.post(
-        f"{base_url}/v2/pipeline",
-        json={"requests": [
-            {"type": "execute", "stmt": {"sql": sql, "args": [_to_arg(a) for a in args]}},
-            {"type": "close"}
-        ]},
-        timeout=60
-    )
-    if not r.ok:
-        raise RuntimeError(f"Turso HTTP {r.status_code}: {r.text[:500]}")
-    data = r.json()
-    res = data["results"][0]
-    if res.get("type") == "error":
-        raise RuntimeError(f"Turso SQL: {res.get('error',{}).get('message', '')[:300]}")
-    return res["response"]["result"]
-
-
-def normalizar(texto):
-    if texto is None:
-        return ""
-    try:
-        if pd.isna(texto):
-            return ""
-    except (TypeError, ValueError):
-        pass
-    s = str(texto).upper().strip()
-    rep = {'Á':'A','É':'E','Í':'I','Ó':'O','Ú':'U','Ü':'U','Ñ':'N',
-           'á':'A','é':'E','í':'I','ó':'O','ú':'U','ü':'U','ñ':'N'}
-    for o, n in rep.items():
-        s = s.replace(o, n)
-    while '  ' in s:
-        s = s.replace('  ', ' ')
-    return s
-
-
-def normalizar_fraccion(valor):
-    if valor is None:
-        return ""
-    try:
-        if pd.isna(valor):
-            return ""
-    except (TypeError, ValueError):
-        pass
-    try:
-        if isinstance(valor, (int, float)):
-            return f"{int(valor):010d}"
-        s = str(valor).strip().replace(' ', '')
-        if '.' in s:
-            s = s.split('.')[0]
-        if not s.isdigit():
-            return ""
-        return f"{int(s):010d}"
-    except (ValueError, TypeError):
-        return ""
-
-
-SCHEMA_VERSION = "v2"
-
-
-def init_db():
-    _post_pipeline([
-        "CREATE TABLE IF NOT EXISTS metadata (clave TEXT PRIMARY KEY, valor TEXT)"
-    ])
-    try:
-        rows = _query("SELECT valor FROM metadata WHERE clave = ?", ["schema_version"])
-        current = rows[0][0] if rows else None
-    except Exception:
-        current = None
-    if current == SCHEMA_VERSION:
+def mostrar_resultados(resultados):
+    if not resultados:
+        st.info("Sin resultados.")
         return
-    _post_pipeline([
-        "DROP TABLE IF EXISTS base",
-        "DROP TABLE IF EXISTS aranceles",
-        "DROP TABLE IF EXISTS estimado",
-        """CREATE TABLE base (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            descripcion TEXT,
-            descripcion_factura TEXT,
-            fraccion TEXT,
-            precio_manual REAL,
-            observaciones TEXT,
-            desc_norm TEXT
-        )""",
-        "CREATE INDEX idx_desc_norm ON base(desc_norm)",
-        "CREATE INDEX idx_fraccion ON base(fraccion)",
-        "CREATE TABLE aranceles (fraccion TEXT PRIMARY KEY, arancel REAL, umt TEXT)",
-        "CREATE TABLE estimado (fraccion TEXT PRIMARY KEY, descripcion_nico TEXT, umt TEXT, precio REAL)",
-        ("INSERT OR REPLACE INTO metadata (clave, valor) VALUES (?, ?)", ["schema_version", SCHEMA_VERSION]),
+    st.success(f"**{len(resultados)} resultados encontrados**")
+    css = """
+    <style>
+    .tabla-wrapper { overflow-x: auto; margin-top: 8px; border-radius: 6px; }
+    table.tabla-resultados {
+        width: 100%; border-collapse: collapse;
+        font-family: 'Source Sans Pro', sans-serif; font-size: 14px; color: #E4E7EB;
+    }
+    table.tabla-resultados thead th {
+        background-color: #323F4B; color: #CBD2D9; padding: 10px 12px;
+        text-align: center; font-weight: 600;
+        border-bottom: 2px solid #3E4C59; white-space: nowrap;
+    }
+    table.tabla-resultados thead th.col-factura {
+        background-color: #3B9EFF; color: #0B1620; font-weight: 700;
+    }
+    table.tabla-resultados tbody td {
+        padding: 8px 12px; border-bottom: 1px solid #2E3A45;
+        vertical-align: top; text-align: left;
+    }
+    table.tabla-resultados tbody td.center { text-align: center; }
+    table.tabla-resultados tbody td.nowrap { white-space: nowrap; }
+    table.tabla-resultados tbody tr.par td { background-color: #2A3744; }
+    table.tabla-resultados tbody tr.impar td { background-color: #1F2933; }
+    table.tabla-resultados td.precio-est { text-align: center; }
+    table.tabla-resultados span.pill-precio {
+        display: inline-block; border: 1.5px solid #FF4D4D; color: #FFFFFF;
+        box-shadow: 0 0 6px rgba(255,77,77,0.55); border-radius: 6px;
+        padding: 3px 10px; font-weight: 500;
+    }
+    table.tabla-resultados span.pill-obs {
+        display: inline-block; border: 1.5px solid #FFD11A; color: #FFFFFF;
+        box-shadow: 0 0 6px rgba(255,209,26,0.5); border-radius: 6px;
+        padding: 3px 10px; font-weight: 500;
+    }
+    table.tabla-resultados td.obs-vacia { color: #7B8794; }
+    </style>
+    """
+    filas_html = ""
+    for idx, r in enumerate(resultados):
+        id_, desc, desc_fac, frac, ar, umt, pre, obs = r
+        arancel_fmt = f"{int(ar*100)}%" if ar is not None else ""
+        precio_fmt = f"{pre:.2f}" if pre is not None else ""
+        clase = "par" if idx % 2 == 0 else "impar"
+        if precio_fmt:
+            precio_cell = f"<td class='precio-est'><span class='pill-precio'>{_esc(precio_fmt)}</span></td>"
+        else:
+            precio_cell = "<td class='center'></td>"
+        obs_txt = _esc(obs) if obs else ""
+        if obs_txt:
+            obs_cell = f"<td><span class='pill-obs'>{obs_txt}</span></td>"
+        else:
+            obs_cell = "<td class='obs-vacia'>—</td>"
+        filas_html += (
+            f"<tr class='{clase}'>"
+            f"<td>{_esc(desc)}</td>"
+            f"<td class='nowrap'>{_esc(desc_fac)}</td>"
+            f"<td class='center'>{_esc(frac)}</td>"
+            f"<td class='center'>{_esc(arancel_fmt)}</td>"
+            f"<td class='center'>{_esc(umt)}</td>"
+            f"{precio_cell}"
+            f"{obs_cell}"
+            f"</tr>"
+        )
+    tabla_html = (
+        css +
+        "<div class='tabla-wrapper'>"
+        "<table class='tabla-resultados'>"
+        "<thead><tr>"
+        "<th>DESCRIPCION</th>"
+        "<th class='col-factura'>DESCRIPCION FACTURA</th>"
+        "<th>FRACCION</th><th>ARANCEL</th><th>UMT</th><th>PRECIO ESTIMADO</th><th>OBSERVACIONES</th>"
+        "</tr></thead><tbody>"
+        + filas_html +
+        "</tbody></table></div>"
+    )
+    st.markdown(tabla_html, unsafe_allow_html=True)
+
+
+def modo_consulta():
+    header_con_salir("🔎 CONSULTA DE FRACCIONES")
+    n_base, n_ar, n_est = db.contar_registros()
+    st.caption(f"📦 {n_base} productos · 📋 {n_ar} fracciones LIGIE · 💲 {n_est} precios estimados")
+    criterio = st.text_input("Escribe una palabra (mayúsculas/acentos no importan)", key="busq_cons")
+    if criterio:
+        resultados = db.buscar(criterio)
+        mostrar_resultados(resultados)
+
+
+def modo_admin():
+    header_con_salir("🔎 CONSULTA DE FRACCIONES - Administrador")
+    n_base, n_ar, n_est = db.contar_registros()
+    st.caption(f"📦 {n_base} productos · 📋 {n_ar} fracciones LIGIE · 💲 {n_est} precios estimados · Modo: ADMINISTRADOR")
+
+    tabs = st.tabs([
+        "🔎 Consultar",
+        "➕ Agregar / Editar",
+        "📦 Subir BASE (Excel)",
+        "📤 Subir LIGIE (Excel)",
+        "💲 Subir Precios (Excel)",
+        "💾 Descargar Backup",
+        "🔑 Contraseñas"
     ])
 
+    with tabs[0]:
+        criterio = st.text_input("Escribe una palabra", key="busq_admin")
+        if criterio:
+            mostrar_resultados(db.buscar(criterio))
 
-def contar_registros():
-    n_base = _query("SELECT COUNT(*) FROM base")[0][0]
-    n_ar = _query("SELECT COUNT(*) FROM aranceles")[0][0]
-    n_est = _query("SELECT COUNT(*) FROM estimado")[0][0]
-    return n_base, n_ar, n_est
+    with tabs[1]:
+        st.markdown("### Agregar nuevo producto o editar existente")
+        if st.session_state.get("msg_guardado"):
+            st.success(st.session_state["msg_guardado"])
+            del st.session_state["msg_guardado"]
+        criterio_e = st.text_input("Busca el producto que quieres editar (deja vacío para agregar nuevo)", key="busq_edit")
+        seleccionado = None
+        if criterio_e:
+            res = db.buscar(criterio_e, limite=20)
+            if res:
+                opciones = ["(Nuevo producto)"] + [f"{r[0]} - {r[1]} ({r[3] or 'sin frac'})" for r in res]
+                sel = st.selectbox("Selecciona uno:", opciones, key="sel_edit")
+                if sel != "(Nuevo producto)":
+                    sel_id = int(sel.split(" - ")[0])
+                    seleccionado = db.obtener_registro(sel_id)
 
+        sel_id_actual = seleccionado[0] if seleccionado else None
+        sel_id_anterior = st.session_state.get("edit_sel_id_actual")
+        if sel_id_actual != sel_id_anterior:
+            st.session_state["edit_sel_id_actual"] = sel_id_actual
+            if seleccionado:
+                _, d_v, df_v, fr_v, pm_v, obs_v = seleccionado
+                st.session_state["form_d"] = d_v or ""
+                st.session_state["form_df"] = df_v or ""
+                st.session_state["form_f"] = fr_v or ""
+                st.session_state["form_p"] = str(pm_v) if pm_v is not None else ""
+                st.session_state["form_obs"] = obs_v or ""
+            else:
+                st.session_state["form_d"] = ""
+                st.session_state["form_df"] = ""
+                st.session_state["form_f"] = ""
+                st.session_state["form_p"] = ""
+                st.session_state["form_obs"] = ""
+            st.rerun()
 
-def obtener_registro(id_reg):
-    rows = _query(
-        "SELECT id, descripcion, descripcion_factura, fraccion, precio_manual, observaciones FROM base WHERE id = ?",
-        [id_reg]
-    )
-    return rows[0] if rows else None
+        if seleccionado:
+            st.info(f"✏️ Editando ID {seleccionado[0]} - los campos están pre-llenados con los datos actuales")
+            id_e = seleccionado[0]
+        else:
+            id_e = None
+            if criterio_e:
+                st.caption("Llena los datos para AGREGAR un nuevo producto.")
 
+        col1, col2 = st.columns(2)
+        with col1:
+            d = st.text_input("DESCRIPCION", key="form_d")
+            fr = st.text_input("FRACCION (10 dígitos)", key="form_f")
+            pm = st.text_input("PRECIO ESTIMADO (manual, opcional)", key="form_p")
+        with col2:
+            df_ = st.text_input("DESCRIPCION FACTURA", key="form_df")
+            obs = st.text_input("OBSERVACIONES", key="form_obs")
 
-def agregar_registro(descripcion, desc_factura, fraccion, observaciones="", precio_manual=None):
-    fn = normalizar_fraccion(fraccion)
-    pm = None
-    if precio_manual is not None and str(precio_manual).strip() != "":
-        try:
-            pm = float(precio_manual)
-        except (ValueError, TypeError):
-            pm = None
-    res = _execute(
-        "INSERT INTO base (descripcion, descripcion_factura, fraccion, precio_manual, observaciones, desc_norm) VALUES (?,?,?,?,?,?)",
-        [descripcion, desc_factura, fn, pm, observaciones, normalizar(descripcion)]
-    )
-    rid = res.get("last_insert_rowid")
-    return int(rid) if rid else 0
-
-
-def actualizar_registro(id_reg, descripcion, desc_factura, fraccion, observaciones, precio_manual=None):
-    fn = normalizar_fraccion(fraccion)
-    pm = None
-    if precio_manual is not None and str(precio_manual).strip() != "":
-        try:
-            pm = float(precio_manual)
-        except (ValueError, TypeError):
-            pm = None
-    _execute(
-        "UPDATE base SET descripcion=?, descripcion_factura=?, fraccion=?, precio_manual=?, observaciones=?, desc_norm=? WHERE id=?",
-        [descripcion, desc_factura, fn, pm, observaciones, normalizar(descripcion), id_reg]
-    )
-
-
-def eliminar_registro(id_reg):
-    _execute("DELETE FROM base WHERE id=?", [id_reg])
-
-
-BATCH_SIZE = 100
-
-
-def _bulk_insert(sql_template, rows):
-    if not rows:
-        return 0
-    total = 0
-    for i in range(0, len(rows), BATCH_SIZE):
-        chunk = rows[i:i+BATCH_SIZE]
-        stmts = [(sql_template, row) for row in chunk]
-        _post_pipeline(stmts)
-        total += len(chunk)
-    return total
-
-
-def reemplazar_base(df):
-    _execute("DELETE FROM base", [])
-    rows = []
-    for _, row in df.iterrows():
-        try:
-            desc = str(row.iloc[0]) if not pd.isna(row.iloc[0]) else ""
-            if not desc.strip():
-                continue
-            desc_fac = str(row.iloc[1]) if len(row) > 1 and not pd.isna(row.iloc[1]) else ""
-            fraccion = normalizar_fraccion(row.iloc[2]) if len(row) > 2 else ""
-            pm = None
-            obs = ""
-            if len(row) >= 7:
-                if not pd.isna(row.iloc[5]):
+        c1, c2, c3 = st.columns([1, 1, 4])
+        with c1:
+            if st.button("💾 Guardar", type="primary"):
+                if not d.strip():
+                    st.error("La DESCRIPCION es obligatoria")
+                else:
+                    pm_val = pm.strip() if pm else None
                     try:
-                        v = row.iloc[5]
-                        pm = float(v) if isinstance(v, (int, float)) else float(str(v).strip())
-                    except (ValueError, TypeError):
-                        pm = None
-                obs = str(row.iloc[6]) if not pd.isna(row.iloc[6]) else ""
-            elif len(row) >= 4:
-                obs = str(row.iloc[3]) if not pd.isna(row.iloc[3]) else ""
-            rows.append([desc, desc_fac, fraccion, pm, obs, normalizar(desc)])
-        except Exception:
-            continue
-    return _bulk_insert(
-        "INSERT INTO base (descripcion, descripcion_factura, fraccion, precio_manual, observaciones, desc_norm) VALUES (?,?,?,?,?,?)",
-        rows
-    )
+                        if id_e:
+                            db.actualizar_registro(id_e, d, df_, fr, obs, pm_val)
+                            st.session_state["msg_guardado"] = f"✅ Registro ID {id_e} actualizado correctamente"
+                        else:
+                            new_id = db.agregar_registro(d, df_, fr, obs, pm_val)
+                            st.session_state["msg_guardado"] = f"✅ Nuevo producto agregado correctamente (ID {new_id})"
+                        for k in ["form_d", "form_df", "form_f", "form_p", "form_obs", "edit_sel_id_actual", "busq_edit", "sel_edit"]:
+                            if k in st.session_state:
+                                del st.session_state[k]
+                        st.rerun()
+                    except Exception as ex:
+                        st.error(f"Error: {ex}")
+        with c2:
+            if id_e:
+                if st.button("🗑️ Eliminar"):
+                    db.eliminar_registro(id_e)
+                    for k in ["form_d", "form_df", "form_f", "form_p", "form_obs", "edit_sel_id_actual", "busq_edit", "sel_edit"]:
+                        if k in st.session_state:
+                            del st.session_state[k]
+                    st.session_state["msg_guardado"] = f"✅ Registro ID {id_e} eliminado correctamente"
+                    st.rerun()
+
+    with tabs[2]:
+        st.markdown("### 📦 Reemplazar BASE de productos completa")
+        st.warning("⚠️ Esto BORRA todos los productos actuales y los reemplaza por los del Excel que subas.")
+        st.caption("Formato: pestaña BASE con columnas DESCRIPCION, DESCRIPCION FACTURA, FRACCION, [...], OBSERVACIONES.")
+        uploaded = st.file_uploader("Sube Excel con la BASE", type=["xlsx", "xlsm"], key="up_base")
+        if uploaded:
+            try:
+                df = pd.read_excel(uploaded, sheet_name='BASE', engine='openpyxl')
+                df = df.dropna(subset=[df.columns[0]])
+                st.info(f"Detectados {len(df)} productos en el archivo.")
+                if st.button("⚠️ REEMPLAZAR BASE AHORA", type="primary"):
+                    with st.spinner("Subiendo a Turso..."):
+                        n = db.reemplazar_base(df)
+                    st.success(f"✅ {n} productos cargados en Turso")
+                    st.rerun()
+            except Exception as ex:
+                st.error(f"Error: {ex}")
+
+    with tabs[3]:
+        st.markdown("### 📤 Reemplazar LIGIE (ARANCELES)")
+        st.warning("⚠️ Esto BORRA toda la LIGIE actual.")
+        st.caption("Formato: pestaña ARANCELES con columnas FRACCION, ARANCEL (decimal: 0.15 = 15%), UMT.")
+        upl = st.file_uploader("Sube Excel LIGIE", type=["xlsx", "xlsm"], key="up_ligie")
+        if upl:
+            try:
+                df_ar = pd.read_excel(upl, sheet_name='ARANCELES', engine='openpyxl')
+                st.info(f"Detectadas {len(df_ar)} fracciones en el archivo.")
+                if st.button("⚠️ REEMPLAZAR LIGIE AHORA", type="primary"):
+                    with st.spinner("Subiendo a Turso..."):
+                        n = db.reemplazar_aranceles(df_ar)
+                    st.success(f"✅ {n} fracciones LIGIE cargadas")
+                    st.rerun()
+            except Exception as ex:
+                st.error(f"Error: {ex}")
+
+    with tabs[4]:
+        st.markdown("### 💲 Reemplazar Precios Estimados")
+        st.warning("⚠️ Esto BORRA todos los precios estimados actuales.")
+        st.caption("Formato: pestaña 'estimado' con columnas FRACCION, DESCRIPCION NICO, UMT, PRECIO ESTIMADO.")
+        upe = st.file_uploader("Sube Excel de Precios Estimados", type=["xlsx", "xlsm"], key="up_est")
+        if upe:
+            try:
+                df_e = pd.read_excel(upe, sheet_name='estimado', engine='openpyxl')
+                st.info(f"Detectados {len(df_e)} precios en el archivo.")
+                if st.button("⚠️ REEMPLAZAR PRECIOS AHORA", type="primary"):
+                    with st.spinner("Subiendo a Turso..."):
+                        n = db.reemplazar_estimado(df_e)
+                    st.success(f"✅ {n} precios cargados")
+                    st.rerun()
+            except Exception as ex:
+                st.error(f"Error: {ex}")
+
+    with tabs[5]:
+        st.markdown("### 💾 Descargar respaldo completo")
+        st.caption("Genera un Excel con TODAS las tablas (BASE, ARANCELES, estimado) de la BD actual.")
+        if st.button("📥 Generar Excel de respaldo"):
+            with st.spinner("Generando..."):
+                buf = io.BytesIO()
+                db.exportar_excel(buf)
+                buf.seek(0)
+            fecha = datetime.now().strftime("%Y%m%d_%H%M")
+            st.download_button(
+                "⬇️ Descargar Excel",
+                data=buf.getvalue(),
+                file_name=f"respaldo_consulta_{fecha}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+
+    with tabs[6]:
+        st.markdown("### 🔑 Cambiar contraseñas de acceso")
+        st.caption("Aquí actualizas la contraseña de cada perfil. El cambio aplica al instante.")
+
+        st.markdown("#### Perfil ADMINISTRADOR")
+        st.caption("Solo tú. Si la cambias, escribe la nueva en un lugar seguro porque NO se muestra después.")
+        with st.form("form_pass_admin", clear_on_submit=True):
+            new_admin = st.text_input("Nueva contraseña admin", type="password", key="new_pass_admin")
+            if st.form_submit_button("💾 Actualizar contraseña ADMIN", type="primary"):
+                if not new_admin or not new_admin.strip():
+                    st.error("Escribe una contraseña válida")
+                else:
+                    try:
+                        db.cambiar_password("admin", new_admin.strip())
+                        st.success("✅ Contraseña ADMIN actualizada")
+                    except Exception as ex:
+                        st.error(f"Error: {ex}")
+
+        st.divider()
+
+        st.markdown("#### Perfil CONSULTA (los 20 usuarios)")
+        st.caption("Cuando cambies esta contraseña, avísales a tus 20 usuarios la nueva.")
+        with st.form("form_pass_consulta", clear_on_submit=True):
+            new_cons = st.text_input("Nueva contraseña consulta", type="password", key="new_pass_cons")
+            if st.form_submit_button("💾 Actualizar contraseña CONSULTA", type="primary"):
+                if not new_cons or not new_cons.strip():
+                    st.error("Escribe una contraseña válida")
+                else:
+                    try:
+                        db.cambiar_password("consulta", new_cons.strip())
+                        st.success("✅ Contraseña CONSULTA actualizada")
+                    except Exception as ex:
+                        st.error(f"Error: {ex}")
 
 
-def reemplazar_aranceles(df):
-    _execute("DELETE FROM aranceles", [])
-    rows = []
-    seen = set()
-    for _, row in df.iterrows():
-        try:
-            fraccion = normalizar_fraccion(row.iloc[0])
-            if not fraccion or fraccion in seen:
-                continue
-            seen.add(fraccion)
-            arancel = float(row.iloc[1]) if not pd.isna(row.iloc[1]) else None
-            umt = str(row.iloc[2]) if not pd.isna(row.iloc[2]) else ""
-            rows.append([fraccion, arancel, umt])
-        except Exception:
-            continue
-    return _bulk_insert("INSERT INTO aranceles (fraccion, arancel, umt) VALUES (?,?,?)", rows)
-
-
-def reemplazar_estimado(df):
-    _execute("DELETE FROM estimado", [])
-    rows = []
-    seen = set()
-    for _, row in df.iterrows():
-        try:
-            fraccion = normalizar_fraccion(row.iloc[0])
-            if not fraccion or fraccion in seen:
-                continue
-            seen.add(fraccion)
-            desc_nico = str(row.iloc[1]) if not pd.isna(row.iloc[1]) else ""
-            umt = str(row.iloc[2]) if not pd.isna(row.iloc[2]) else ""
-            precio = float(row.iloc[3]) if not pd.isna(row.iloc[3]) else None
-            rows.append([fraccion, desc_nico, umt, precio])
-        except Exception:
-            continue
-    return _bulk_insert("INSERT INTO estimado (fraccion, descripcion_nico, umt, precio) VALUES (?,?,?,?)", rows)
-
-
-def exportar_excel(ruta_salida):
-    base_rows = _query("SELECT descripcion, descripcion_factura, fraccion, precio_manual, observaciones FROM base")
-    df_base = pd.DataFrame(base_rows, columns=['DESCRIPCION', 'DESCRIPCION FACTURA', 'FRACCION', 'PRECIO ESTIMADO', 'OBSERVACIONES'])
-    ar_rows = _query("SELECT fraccion, arancel, umt FROM aranceles")
-    df_ar = pd.DataFrame(ar_rows, columns=['FRACCION', 'ARANCEL', 'UMT'])
-    est_rows = _query("SELECT fraccion, descripcion_nico, umt, precio FROM estimado")
-    df_est = pd.DataFrame(est_rows, columns=['FRACCION', 'DESCRIPCION NICO', 'UMT', 'PRECIO ESTIMADO'])
-    with pd.ExcelWriter(ruta_salida, engine='openpyxl') as writer:
-        df_base.to_excel(writer, sheet_name='BASE', index=False)
-        df_ar.to_excel(writer, sheet_name='ARANCELES', index=False)
-        df_est.to_excel(writer, sheet_name='estimado', index=False)
-
-
-def obtener_password(perfil):
-    """Lee contraseña del perfil ('admin' o 'consulta') desde Turso.
-    Si no existe en Turso, la inicializa con el valor de Streamlit Secrets."""
-    clave = f"pass_{perfil}"
-    rows = _query("SELECT valor FROM metadata WHERE clave = ?", [clave])
-    if rows:
-        return rows[0][0]
-    default = st.secrets.get("passwords", {}).get(perfil, "")
-    if default:
-        _execute("INSERT OR REPLACE INTO metadata (clave, valor) VALUES (?, ?)", [clave, default])
-    return default
-
-
-def cambiar_password(perfil, nuevo_valor):
-    """Actualiza la contraseña del perfil ('admin' o 'consulta') en Turso."""
-    clave = f"pass_{perfil}"
-    _execute("INSERT OR REPLACE INTO metadata (clave, valor) VALUES (?, ?)", [clave, nuevo_valor])
-
-
-def obtener_password(perfil):
-    clave = f"pass_{perfil}"
-    rows = _query("SELECT valor FROM metadata WHERE clave = ?", [clave])
-    if rows:
-        return rows[0][0]
-    default = st.secrets.get("passwords", {}).get(perfil, "")
-    if default:
-        _execute("INSERT OR REPLACE INTO metadata (clave, valor) VALUES (?, ?)", [clave, default])
-    return default
-
-
-def cambiar_password(perfil, nuevo_valor):
-    clave = f"pass_{perfil}"
-    _execute("INSERT OR REPLACE INTO metadata (clave, valor) VALUES (?, ?)", [clave, nuevo_valor])
-
-
-# Version mejorada: lee columnas por NOMBRE (acepta backup de 5 cols o formato original de 7)
-def reemplazar_base(df):
-    _execute("DELETE FROM base", [])
-    cols = {}
-    for i, c in enumerate(df.columns):
-        cols[normalizar(str(c))] = i
-    idx_desc = cols.get("DESCRIPCION", 0)
-    idx_fac = cols.get("DESCRIPCION FACTURA", 1)
-    idx_frac = cols.get("FRACCION", 2)
-    idx_pm = cols.get("PRECIO ESTIMADO")
-    idx_obs = cols.get("OBSERVACIONES")
-    rows = []
-    for _, row in df.iterrows():
-        try:
-            desc = str(row.iloc[idx_desc]) if not pd.isna(row.iloc[idx_desc]) else ""
-            if not desc.strip():
-                continue
-            desc_fac = str(row.iloc[idx_fac]) if not pd.isna(row.iloc[idx_fac]) else ""
-            fraccion = normalizar_fraccion(row.iloc[idx_frac])
-            pm = None
-            if idx_pm is not None and not pd.isna(row.iloc[idx_pm]):
-                try:
-                    v = row.iloc[idx_pm]
-                    pm = float(v) if isinstance(v, (int, float)) else float(str(v).strip())
-                except (ValueError, TypeError):
-                    pm = None
-            obs = ""
-            if idx_obs is not None and not pd.isna(row.iloc[idx_obs]):
-                obs = str(row.iloc[idx_obs])
-            rows.append([desc, desc_fac, fraccion, pm, obs, normalizar(desc)])
-        except Exception:
-            continue
-    return _bulk_insert(
-        "INSERT INTO base (descripcion, descripcion_factura, fraccion, precio_manual, observaciones, desc_norm) VALUES (?,?,?,?,?,?)",
-        rows
-    )
-
-
-# Busqueda mejorada: detecta automaticamente fraccion (solo digitos) o descripcion
-def buscar(criterio, limite=100):
-    if not criterio or not criterio.strip():
-        return []
-    limpio = criterio.strip()
-    for ch in [' ', '.', '-']:
-        limpio = limpio.replace(ch, '')
-    if limpio.isdigit():
-        prefijo = limpio[:10]
-        return _query("""
-            SELECT b.id, b.descripcion, b.descripcion_factura, b.fraccion,
-                   a.arancel, a.umt,
-                   COALESCE(b.precio_manual, e.precio) AS precio_final,
-                   b.observaciones
-            FROM base b
-            LEFT JOIN aranceles a ON a.fraccion = b.fraccion
-            LEFT JOIN estimado e ON e.fraccion = b.fraccion
-            WHERE b.fraccion LIKE ?
-            LIMIT ?
-        """, [f'{prefijo}%', limite])
-    cn = normalizar(criterio)
-    if not cn:
-        return []
-    return _query("""
-        SELECT b.id, b.descripcion, b.descripcion_factura, b.fraccion,
-               a.arancel, a.umt,
-               COALESCE(b.precio_manual, e.precio) AS precio_final,
-               b.observaciones
-        FROM base b
-        LEFT JOIN aranceles a ON a.fraccion = b.fraccion
-        LEFT JOIN estimado e ON e.fraccion = b.fraccion
-        WHERE b.desc_norm LIKE ?
-        LIMIT ?
-    """, [f'%{cn}%', limite])
+if "modo" not in st.session_state:
+    login()
+elif st.session_state["modo"] == "admin":
+    modo_admin()
+else:
+    modo_consulta()
