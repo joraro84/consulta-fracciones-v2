@@ -196,25 +196,6 @@ def init_db():
     ])
 
 
-def buscar(criterio, limite=100):
-    if not criterio or not criterio.strip():
-        return []
-    cn = normalizar(criterio)
-    if not cn:
-        return []
-    return _query("""
-        SELECT b.id, b.descripcion, b.descripcion_factura, b.fraccion,
-               a.arancel, a.umt,
-               COALESCE(b.precio_manual, e.precio) AS precio_final,
-               b.observaciones
-        FROM base b
-        LEFT JOIN aranceles a ON a.fraccion = b.fraccion
-        LEFT JOIN estimado e ON e.fraccion = b.fraccion
-        WHERE b.desc_norm LIKE ?
-        LIMIT ?
-    """, [f'%{cn}%', limite])
-
-
 def contar_registros():
     n_base = _query("SELECT COUNT(*) FROM base")[0][0]
     n_ar = _query("SELECT COUNT(*) FROM aranceles")[0][0]
