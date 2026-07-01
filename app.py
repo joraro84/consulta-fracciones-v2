@@ -1,5 +1,5 @@
 """
-CONSULTA DE FRACCIONES - v2 (Turso BD persistente)
+CONSULTA DE FRACCIONES - v3 (Turso BD persistente + copia en memoria)
 """
 import streamlit as st
 import pandas as pd
@@ -55,10 +55,12 @@ def _init():
     db.init_db()
     return True
 
+
 try:
     _init()
 except Exception as e:
     st.error(f"❌ Error conectando a Turso: {e}")
+    st.info("La base de datos no respondió aún después de varios reintentos. Espera un momento y recarga la página (F5).")
     st.stop()
 
 
@@ -80,17 +82,17 @@ def login():
     with st.form("form_login", clear_on_submit=False):
         pwd = st.text_input("Contraseña", type="password", key="pwd_login")
         entrar = st.form_submit_button("Entrar", type="primary", use_container_width=True)
-    if entrar:
-        admin_pwd = db.obtener_password("admin") or st.secrets.get("passwords", {}).get("admin", "admin2026")
-        cons_pwd = db.obtener_password("consulta") or st.secrets.get("passwords", {}).get("consulta", "agencia2026")
-        if pwd == admin_pwd:
-            st.session_state["modo"] = "admin"
-            st.rerun()
-        elif pwd == cons_pwd:
-            st.session_state["modo"] = "consulta"
-            st.rerun()
-        else:
-            st.error("Contraseña incorrecta")
+        if entrar:
+            admin_pwd = db.obtener_password("admin") or st.secrets.get("passwords", {}).get("admin", "admin2026")
+            cons_pwd = db.obtener_password("consulta") or st.secrets.get("passwords", {}).get("consulta", "agencia2026")
+            if pwd == admin_pwd:
+                st.session_state["modo"] = "admin"
+                st.rerun()
+            elif pwd == cons_pwd:
+                st.session_state["modo"] = "consulta"
+                st.rerun()
+            else:
+                st.error("Contraseña incorrecta")
     st.caption("Hay dos accesos: administrador (puede modificar) y consulta (solo búsqueda).")
 
 
@@ -195,7 +197,6 @@ def modo_admin():
     header_con_salir("🔎 CONSULTA DE FRACCIONES - Administrador")
     n_base, n_ar, n_est = db.contar_registros()
     st.caption(f"📦 {n_base} productos · 📋 {n_ar} fracciones LIGIE · 💲 {n_est} precios estimados · Modo: ADMINISTRADOR")
-
     tabs = st.tabs([
         "🔎 Consultar",
         "➕ Agregar / Editar",
@@ -210,6 +211,16 @@ def modo_admin():
         criterio = st.text_input("Escribe una palabra", key="busq_admin")
         if criterio:
             mostrar_resultados(db.buscar(criterio))
+        st.write("")
+        if st.button("🔄 Recargar datos desde Turso", key="btn_recargar",
+                     help="Vuelve a leer las 3 tablas y contraseñas desde la base de datos. Úsalo solo si sospechas que la copia en memoria quedó desactualizada."):
+            with st.spinner("Recargando desde Turso..."):
+                try:
+                    db.recargar_datos()
+                    st.success("✅ Datos recargados desde Turso")
+                    st.rerun()
+                except Exception as ex:
+                    st.error(f"Error al recargar: {ex}")
 
     with tabs[1]:
         st.markdown("### Agregar nuevo producto o editar existente")
@@ -226,7 +237,6 @@ def modo_admin():
                 if sel != "(Nuevo producto)":
                     sel_id = int(sel.split(" - ")[0])
                     seleccionado = db.obtener_registro(sel_id)
-
         sel_id_actual = seleccionado[0] if seleccionado else None
         sel_id_anterior = st.session_state.get("edit_sel_id_actual")
         if st.session_state.get("limpiar_form"):
@@ -253,7 +263,6 @@ def modo_admin():
                 st.session_state["form_p"] = ""
                 st.session_state["form_obs"] = ""
             st.rerun()
-
         if seleccionado:
             st.info(f"✏️ Editando ID {seleccionado[0]} - los campos están pre-llenados con los datos actuales")
             id_e = seleccionado[0]
@@ -261,7 +270,6 @@ def modo_admin():
             id_e = None
             if criterio_e:
                 st.caption("Llena los datos para AGREGAR un nuevo producto.")
-
         col1, col2 = st.columns(2)
         with col1:
             d = st.text_input("DESCRIPCION", key="form_d")
@@ -270,7 +278,6 @@ def modo_admin():
         with col2:
             df_ = st.text_input("DESCRIPCION FACTURA", key="form_df")
             obs = st.text_input("OBSERVACIONES", key="form_obs")
-
         c1, c2, c3 = st.columns([1, 1, 4])
         with c1:
             if st.button("💾 Guardar", type="primary"):
@@ -363,18 +370,17 @@ def modo_admin():
                 buf = io.BytesIO()
                 db.exportar_excel(buf)
                 buf.seek(0)
-            fecha = datetime.now().strftime("%Y%m%d_%H%M")
-            st.download_button(
-                "⬇️ Descargar Excel",
-                data=buf.getvalue(),
-                file_name=f"respaldo_consulta_{fecha}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
+                fecha = datetime.now().strftime("%Y%m%d_%H%M")
+                st.download_button(
+                    "⬇️ Descargar Excel",
+                    data=buf.getvalue(),
+                    file_name=f"respaldo_consulta_{fecha}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
 
     with tabs[6]:
         st.markdown("### 🔑 Cambiar contraseñas de acceso")
         st.caption("Aquí actualizas la contraseña de cada perfil. El cambio aplica al instante.")
-
         st.markdown("#### Perfil ADMINISTRADOR")
         st.caption("Solo tú. Si la cambias, escribe la nueva en un lugar seguro porque NO se muestra después.")
         with st.form("form_pass_admin", clear_on_submit=True):
@@ -388,9 +394,7 @@ def modo_admin():
                         st.success("✅ Contraseña ADMIN actualizada")
                     except Exception as ex:
                         st.error(f"Error: {ex}")
-
         st.divider()
-
         st.markdown("#### Perfil CONSULTA (los 20 usuarios)")
         st.caption("Cuando cambies esta contraseña, avísales a tus 20 usuarios la nueva.")
         with st.form("form_pass_consulta", clear_on_submit=True):
