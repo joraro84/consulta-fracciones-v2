@@ -77,8 +77,10 @@ def header_con_salir(titulo):
 def login():
     st.title("🔎 CONSULTA DE FRACCIONES")
     st.subheader("Inicio de sesión")
-    pwd = st.text_input("Contraseña", type="password", key="pwd_login")
-    if st.button("Entrar", type="primary", use_container_width=True):
+    with st.form("form_login", clear_on_submit=False):
+        pwd = st.text_input("Contraseña", type="password", key="pwd_login")
+        entrar = st.form_submit_button("Entrar", type="primary", use_container_width=True)
+    if entrar:
         admin_pwd = db.obtener_password("admin") or st.secrets.get("passwords", {}).get("admin", "admin2026")
         cons_pwd = db.obtener_password("consulta") or st.secrets.get("passwords", {}).get("consulta", "agencia2026")
         if pwd == admin_pwd:
